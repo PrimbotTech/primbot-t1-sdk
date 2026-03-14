@@ -1,0 +1,18 @@
+# 输入源操作
+
+int32 value
+
+# 添加新的输入源
+int32 INPUTACTION_ADD = 1001
+
+# 修改输入源配置
+int32 INPUTACTION_MODIFY = 1002
+
+# 删除输入源
+int32 INPUTACTION_DELETE = 1003
+
+# 使能输入源
+int32 INPUTACTION_ENABLE = 2001
+
+# 下使能输入源
+int32 INPUTACTION_DISABLE = 2002

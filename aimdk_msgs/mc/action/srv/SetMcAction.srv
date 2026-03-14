@@ -1,0 +1,9 @@
+# 请求头
+RequestHeader header
+
+# Action命令
+McActionCommand command
+
+---
+
+CommonResponse response

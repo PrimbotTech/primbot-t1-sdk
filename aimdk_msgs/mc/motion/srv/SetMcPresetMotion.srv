@@ -1,0 +1,18 @@
+# 请求头
+RequestHeader header
+
+# 控制区域
+McControlArea area
+
+# 预设动作
+McPresetMotion motion
+
+# 是否打断前一个动作
+bool interrupt
+
+# 自定义动作地址
+string ani_path
+
+---
+
+CommonTaskResponse response

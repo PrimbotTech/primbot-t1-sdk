@@ -1,0 +1,27 @@
+CommonRequest header
+
+# ----------------------------------------------------
+# 视频路径
+# ----------------------------------------------------
+string video_path
+
+# ----------------------------------------------------
+## 播放模式枚举
+uint8 mode 
+
+# 仅播放一次
+uint8 EMOTION_MODE_ONCE = 1
+
+# 循环播放
+uint8 EMOTION_MODE_LOOP = 2
+
+# ----------------------------------------------------
+# 播放优先级
+int32 priority
+
+---
+
+CommonResponse header
+
+bool success
+string message

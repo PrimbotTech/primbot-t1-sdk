@@ -1,0 +1,45 @@
+# 预设动作
+
+int32 value
+
+# 右手挥手
+int32 RIGHT_ARM_WAVE = 1001
+
+# 右手握手
+int32 RIGHT_ARM_HANDSHAKE = 1002
+
+# 左手握手1.5m上对象
+int32 RIGHT_ARM_HANDSHAKE_FOR_1D5METER = 1003
+
+# 左手挥手
+int32 LEFT_ARM_WAVE = 1011
+
+# 左手握手
+int32 LEFT_ARM_HANDSHAKE = 1012
+
+# 左手握手1.5m上对象
+int32 LEFT_ARM_HANDSHAKE_FOR_1D5METER = 1013
+
+# 双手比心
+int32 BOTH_HANDS_MAKE_HEART = 2001
+
+# 双手摆动，表达喜悦
+int32 BOTH_HANDS_ACTION_HAPPY = 2002
+
+# 双手动作，说话动作
+int32 BOTH_HANDS_ACTION_TALKING = 2003
+
+# 拍照动作1
+int32 PHOTO_POSE_1 = 2011
+
+# 拍照动作2
+int32 PHOTO_POSE_2 = 2012
+
+# 拍照动作3
+int32 PHOTO_POSE_3 = 2013
+
+# 拍照动作4
+int32 PHOTO_POSE_4 = 2014
+
+# 三连拍姿势
+int32 PHOTO_THREE_SHOT = 2020

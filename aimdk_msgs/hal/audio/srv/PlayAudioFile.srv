@@ -1,0 +1,16 @@
+# ----------------------------------------------------
+# request
+
+# 请求头
+CommonRequest request
+
+# 文件信息
+AudioFile file
+
+---
+
+# ----------------------------------------------------
+# response
+
+# 响应头
+CommonResponse reponse

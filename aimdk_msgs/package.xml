@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>aimdk_msgs</name>
+  <version>1.0.0</version>
+  <description>
+    启元机器人二次开发 SDK。
+    同时提供：ROS2 Service/Message 接口定义（SLAM、PNC 桥接接口），
+    以及 Python 高层 API（Robot / mc / hal / interaction / slam / pnc）。
+  </description>
+  <maintainer email="sdk@primebot.com">Primebot Team</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>rosidl_default_generators</buildtool_depend>
+
+  <!-- 消息依赖 -->
+  <depend>std_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>sensor_msgs</depend>
+  <depend>nav_msgs</depend>
+
+  <!-- Python 运行时 -->
+  <exec_depend>python3-rclpy</exec_depend>
+  <exec_depend>rosidl_default_runtime</exec_depend>
+  <member_of_group>rosidl_interface_packages</member_of_group>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

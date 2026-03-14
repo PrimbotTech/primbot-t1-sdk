@@ -1,0 +1,544 @@
+# PrimeBot SDK 快速入门与集成指南
+本指南旨在带领开发者完成启元机器人（PrimeBot）的开发环境配置、连接验证，以及在不同业务场景下的系统集成开发（支持 Python 与 C++）。
+
+***
+
+## 目录
+- [1. 系统架构总览](#1-系统架构总览)
+- [2. 快速开始](#2-快速开始)
+    - [2.1 环境依赖](#21-环境依赖)
+        - [2.1.1 网络环境](#211-网络环境)
+        - [2.1.2 系统环境](#212-系统环境)
+        - [2.1.3 通讯环境](#213-通讯环境)
+    - [2.2 安装与编译](#22-安装与编译)
+        - [2.2.1 编译操作](#221-编译操作)
+        - [2.2.2 命令行交互验证](#222-命令行交互验证)
+    - [2.3 运行示例](#23-运行示例)
+- [3. SDK 开发集成指南（Python & C++）](#3-sdk-开发集成指南python--c)
+    - [3.1 Python 开发集成](#31-python-开发集成)
+        - [3.1.1 方式 A：在 SDK 内部开发](#311-方式-a在-sdk-内部开发)
+        - [3.1.2 方式 B：作为第三方依赖集成](#312-方式-b作为第三方依赖集成)
+    - [3.2 C++ 开发集成](#32-c-开发集成)
+        - [3.2.1 方式 A：在 SDK 内部新增节点](#321-方式-a在-sdk-内部新增节点)
+        - [3.2.2 方式 B：作为独立第三方库集成](#322-方式-b作为独立第三方库集成)
+- [4. 常见问题](#4-常见问题)
+    - [4.1 节点发现异常排查](#41-节点发现异常排查)
+    - [4.2 数据收发异常排查](#42-数据收发异常排查)
+    - [4.3 编译异常排查](#43-编译异常排查)
+    - [4.4 机器人域配置](#44-机器人域配置)
+    - [4.5 colcon 安装异常排查](#45-colcon-安装异常排查)
+***
+
+## 1. 部署架构总览
+```
++-----------------------+         +-----------------------+         +-----------------------+
+|    开发 PC / 外部设备    |         |     RK3576 运控板      |         |     Orin NX 大脑板     |
+|    (Ubuntu 22.04)     |         |    IP: 10.1.1.100     |         |     IP: 10.1.1.10     |
+|                       |  局域网  | [HAL/MC/交互 基础服务]  |  局域网  | [核心算法/供应商程序]   |
+|     SDK 用户程序        | ◀═════▶ |     SDK 用户程序        | ◀═════▶ |     SDK 用户程序        |
+|     ROS2 节点          | FastDDS |     ROS2 节点          | FastDDS |     ROS2 节点          |
++-----------------------+         +-----------------------+         +-----------------------+
+           ║                                                                   ║
+           ╚══════════════════════════ 局域网 FastDDS ══════════════════════════╝
+```
+- **开发 PC / 外部设备**：外部开发者的主要开发与运行环境。通常部署 Ubuntu 22.04 与 ROS2 Humble，通过局域网接入机器人。
+- **RK3576 运控板**：机器人的运动控制大脑。负责底层硬件抽象（HAL）、运控算法（MC）及各类基础交互服务（表情、语音等）。
+- **Orin NX 大脑板**：机器人的高阶感知与导航大脑。负责运行核心 AI 算法、感知、规划及部分复杂的供应商程序。
+- **局域网 DDS**：所有硬件节点均通过局域网物理连接，并使用 DDS 协议作为底层的 ROS2 通信总线，实现跨设备的高性能数据交换。
+***
+
+## 2. 快速开始
+> **说明**：以下流程以**开发 PC** 为例。在 RK3576 / Orin NX 板子上直接开发时，流程相同。
+### 2.1 环境依赖
+请确保开发环境满足以下基础要求，包括：**物理网络拓扑（开发 PC 与机器人网线直连或处于同一局域网子网）**的连通、**操作系统与中间件（Ubuntu 22.04.x + ROS2 Humble）**的正确安装，以及**跨设备通讯协议（基于 FastDDS 的 ROS2 通信）**的顺畅，以保证您的程序能够正常发现并控制机器人节点。
+
+#### 2.1.1 网络环境
+将开发 PC 与机器人通过网线直连，并将两端网络接口配置到同一 IP 子网内，确保在同一网段。机器人出厂默认 IP 为大脑板（Orin NX）`10.1.1.10`、运控板（RK3576）`10.1.1.100`，如与实际不符请以实际 IP 为准。
+
+**配置开发 PC 静态 IP：**
+
+为了能够直接与机器人通信，建议将开发 PC 的有线网卡 IP 配置为 `10.1.1.99`。在开发 PC 上可进行如下操作配置IP：
+1. 打开 **Settings**（设置） -> **Network**（网络）。
+2. 找到对应的有线网卡（Wired），点击齿轮图标 ⚙️ 进入设置。
+3. 切换到 **IPv4** 标签页。
+4. 将 IPv4 Method 改为 **Manual**（手动）。
+5. 在 Addresses 区域填入：
+   - Address（地址）: `10.1.1.99`
+   - Netmask（子网掩码）: `255.255.255.0`
+   - Gateway（网关）: 留空
+6. 点击 **Apply** 保存配置，并重新开关一次网络开关以生效。
+配置完成后，可以在终端测试是否能与机器人通信：
+```bash
+ping 10.1.1.10   # 测试连接大脑板
+ping 10.1.1.100  # 测试连接运控板
+```
+- **正常连接输出**（按下 `Ctrl+C` 停止测试）：
+  ```text
+  64 bytes from 10.1.1.100: icmp_seq=1 ttl=64 time=0.428 ms
+  64 bytes from 10.1.1.100: icmp_seq=2 ttl=64 time=0.370 ms
+  ```
+- **异常连接输出**：
+  ```text
+  From 10.1.1.99 icmp_seq=1 Destination Host Unreachable
+  ```
+  *(若出现异常，请检查网线是否插紧、配置是否生效，或尝试重启电脑网络)*
+
+---
+
+#### 2.1.2 系统环境
+推荐在 Ubuntu 22.04 + ROS2 Humble 环境下进行开发，暂不支持在 Mac、Windows 系统下进行开发。除开发 PC 外，机器人自带的运控板（RK3576）与大脑板（Orin NX）均支持直接进行二次开发。
+
+**Ubuntu 22.04**
+
+通过如下方式确认操作系统版本：
+```bash
+lsb_release -d
+```
+- **正常输出**：
+  `Description: Ubuntu 22.04.x LTS`
+
+若版本不匹配，请参考官方 [下载页面](https://releases.ubuntu.com/22.04/) 安装 Ubuntu 22.04。
+
+**ROS2 Humble**
+
+通过如下方式确认ROS2版本：
+```bash
+echo $ROS_DISTRO
+```
+- **正常输出**：
+  `humble`
+
+若版本不匹配或未安装，请参考官方 [安装指南](https://docs.ros.org/en/humble/Installation.html) 完成安装。
+
+建议将 ROS2 环境加载写入 `~/.bashrc` 以永久生效：
+```bash
+if ! grep -q "source /opt/ros/humble/setup.bash" ~/.bashrc; then
+  echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+fi
+source ~/.bashrc
+```
+> 若未写入 `~/.bashrc`，则每次打开新终端需手动执行 `source /opt/ros/humble/setup.bash`。
+
+**构建工具 (colcon)**
+
+ROS2 使用 `colcon` 作为统一的构建工具。请确保已安装 `python3-colcon-common-extensions`：
+```bash
+sudo apt update && sudo apt install python3-colcon-common-extensions
+```
+验证安装：
+```bash
+# 直接查看核心包信息确认版本
+pip3 show colcon-core
+```
+- **预期结果**：能够显示出版本号信息（如 `0.20.x`）即表示 `colcon` 已成功安装且已被配置到系统环境变量中。
+- **异常排查**：若安装失败或无法识别命令，请参考 [4.5 colcon 安装异常排查](#45-colcon-安装异常排查)。
+
+---
+
+#### 2.1.3 通讯环境
+在“网络环境（已连通网线）”与“系统环境（已安装 ROS2）”均就绪后，开发 PC 将自动接入机器人的 ROS 2 分布式通信网络（DDS）。您可以**在不编译 SDK 的情况下**，通过原生的 ROS 2 命令验证是否能正常发现机器人的通讯通道：
+
+**1. 检查节点列表**
+
+```bash
+ros2 node list
+```
+- **正常**：列出机器人端的 ROS2 节点名称（如 `/interaction`、`/hal_audio` 等）
+- **异常**：输出为空或长时间卡住
+
+**2. 检查 Topic 列表**
+
+```bash
+ros2 topic list
+```
+- **正常**：列出若干 `/aima/hal/..`、`/aima/mc/..` 等开头的 topic
+- **异常**：输出为空或仅有 `/rosout`
+
+**3. 检查 Service 列表**
+
+```bash
+ros2 service list
+```
+- **正常**：列出 `/aimdk_5Fmsgs/srv/...`、`/hal_audio/...` 等服务
+- **异常**：输出为空
+
+> **注意**：若上述任何命令输出**异常**，请参考 [常见问题：节点发现异常排查](#41-节点发现异常排查)。
+>
+> **提示**：虽然此时您可以查看到所有的通道，但因为没有编译 SDK，您将无法使用 `ros2 topic echo` 实际查看需要自定义消息类型（如 `aimdk_msgs`）的数据内容。
+---
+### 2.2 安装与编译
+#### 2.2.1 编译操作
+在确认系统和通讯环境就绪后，我们需要将 SDK 源代码编译为 ROS2 运行环境可识别的包和自定义消息格式。以下是完整的解压、编译与环境加载流程：
+
+**1. 解压 SDK**
+
+建议将下载好的 `primebot_sdk.tar.gz` 压缩包放入您指定的开发目录中，然后在该目录下执行解压：
+```bash
+tar -xzf primebot_sdk.tar.gz
+cd primebot_sdk
+```
+
+**2. 编译 SDK**
+
+```bash
+colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+```
+
+> **提示**：执行 `colcon build` 后控制台无严重报错，且末尾输出 `Summary: X packages finished`。
+> 若编译出现失败（如提示 `failed` 或报缺少系统依赖），请参考 [常见问题：编译异常排查](#43-编译异常排查)。
+
+**3. 加载编译产物**
+
+> *(每次打开新终端运行 SDK 相关节点前都需执行此步。**注意：请务必将下方命令的路径替换为您实际解压 SDK 的绝对路径！**)*
+```bash
+source /path/to/your/primebot_sdk/install/setup.bash
+```
+
+**4. 验证数据接收**
+
+在完成 SDK 编译并加载环境变量后，可以测试是否能成功解析并接收到具体的业务数据：
+```bash
+# 检查电源管理 (PMU) 数据
+timeout 5 ros2 topic echo /aima/hal/pmu/state --once
+```
+- **正常**：输出对应的数据报文（如电压、电流、电量百分比等）。
+- **异常**：5 秒无输出（超时退出）或报错 → 参考 [常见问题：数据收发异常排查](#42-数据收发异常排查)
+---
+#### 2.2.2 命令行交互验证
+以下为通过原生 ROS2 命令行直接调用机器人接口的示例，可用于快速验证 Topic 和 Service 是否正常工作。
+
+**Topic 验证（触摸事件订阅验证）**
+
+我们可以通过“终端 A 模拟发布”和“终端 B 订阅数据”的方式，验证触摸事件接口是否正常工作。
+
+*终端 A（模拟发布数据）：*
+```bash
+# 1. 加载环境变量
+source /opt/ros/humble/setup.bash
+source /path/to/your/primebot_sdk/install/setup.bash
+# 2. 模拟发布一个“单次点击”触摸事件 (event_type=1)，每秒发布一次（-r 1）
+ros2 topic pub /aima/hal/touch/state aimdk_msgs/msg/TouchState \
+  "{header: {}, event_type: 1}" -r 1
+```
+
+*终端 B（订阅数据）：*
+```bash
+# 1. 开一个新终端，需先重新加载环境变量
+source /opt/ros/humble/setup.bash
+source /path/to/your/primebot_sdk/install/setup.bash
+# 2. 持续接收并打印接收到的触摸事件
+ros2 topic echo /aima/hal/touch/state
+```
+
+*结果验证：*
+- **正常**：终端 B 将会**每隔 1 秒持续不断地**刷新出以下数据段，按 `Ctrl+C` 可停止接收：
+  ```text
+  header:
+    stamp:
+      sec: 0
+      nanosec: 0
+    frame_id: ''
+  event_type: 1
+  ---
+  ```
+- **异常**：如果终端 B 持续卡住无任何输出，或提示 `Cannot determine type for...` 错误，请参考 [常见问题：数据收发异常排查](#42-数据收发异常排查)。
+
+**Service 验证（调用 TTS 语音播报）**
+
+我们可以直接在终端调用机器人的 TTS（Text-to-Speech）语音播报服务，验证服务响应是否成功以及机器人能否正常发声。
+
+*终端（调用 TTS 服务）：*
+```bash
+# 1. 开一个新终端，需先重新加载环境变量
+source /opt/ros/humble/setup.bash
+source /path/to/your/primebot_sdk/install/setup.bash
+# 调用 TTS 服务，让机器人播报一句话
+ros2 service call /aimdk_5Fmsgs/srv/PlayTts aimdk_msgs/srv/PlayTts \
+  "{header: {}, tts_req: {text: '你好，我是启元机器人', priority_level: {value: 6}, domain: 'sdk_test', is_interrupted: true}}"
+```
+
+*结果验证：*
+- **正常**：终端打印如下信息（`success=True` 表示 TTS 请求已被接受，机器人将开口播报）：
+  ```text
+  response:
+    aimdk_msgs.srv.PlayTts_Response(header=..., tts_resp=...)
+  ```
+- **异常**：如果命令卡在 `waiting for service to become available...` 阶段，或者直接提示 `Service not available`，请参考 [常见问题：数据收发异常排查](#42-数据收发异常排查)。
+---
+### 2.3 运行示例
+每次打开新终端，运行示例前需先加载环境：
+```bash
+source /opt/ros/humble/setup.bash
+source /path/to/your/primebot_sdk/install/setup.bash
+```
+运行示例：
+```bash
+# Python 示例
+python3 examples/python/demo.py
+# C++ 示例
+ros2 run aimdk_examples_cpp demo
+```
+
+> **注意**：若修改了 C++ 示例源码，请重新执行 [2.2.1 编译操作](#221-编译操作) 中的 **第 2 步：编译 SDK**，后根据本章节操作重新运行示例。
+***
+
+## 3. SDK 开发集成指南（Python & C++）
+本章节将指导您基于 SDK 进行二次开发，包括两种典型场景：**直接在 SDK 内部新建模块**（推荐新手或小型工程），或**将 SDK 接入您已有的独立项目**（推荐复杂或已有项目）。根据您使用的编程语言不同，分为 **Python** 和 **C++** 两种开发流程。
+> **前提条件**：在开始本章节之前，请确保已完成以下步骤：
+> 1. 完成环境设置 [2.1.2 系统环境](#212-系统环境) 
+> 2. 完成SDK编译 [2.2.1 编译操作](#221-编译操作) 
+**💡 建议**：在正式开发前，先通过 [2.3 运行示例](#23-运行示例) 验证通讯与示例正常运行，可帮助您在开发阶段更快定位问题根因。
+---
+
+### 3.1 Python 开发集成
+Python 的集成最为简单，因为它是解释型语言，不需要配置复杂的编译环境，天然支持 ROS2 动态加载机制。
+
+#### 3.1.1 方式 A：在 SDK 内部开发
+如果您刚开始尝试，或者工程量不大，可以直接在 SDK 的 `examples/python` 目录下新建脚本：
+1. **新建文件**：在 `primebot_sdk/examples/python` 目录下创建您的 Python 脚本，例如 `my_robot_app.py`。
+2. **编写代码**：参考同目录下的 `demo.py`，导入所需的包以发送指令：
+    ```python
+    import rclpy
+    from aimdk_msgs.msg import ...
+    ```
+3. **运行程序**：在该目录下直接运行您的脚本：
+    ```bash
+    python3 my_robot_app.py
+    ```
+
+---
+
+#### 3.1.2 方式 B：作为第三方依赖集成
+如果您的主工程有独立的包管理或环境（如 `venv` 或 `conda`），可以直接通过环境叠加（Overlaying）的方式引入 SDK，保持主工程结构纯粹。
+
+工程目录结构示例：
+```text
+my_ai_backend/
+├── deps/                      # 【依赖区】统一管理非纯 Python 的复杂依赖
+│   ├── primebot_sdk/          # 放入 SDK 源码
+│   └── other_sdk/             # 放入其他外部 SDK（如有）
+└── app/
+    ├── main.py                # 【业务区】您的原生 Python 业务入口
+    └── api/...
+```
+
+**集成操作步骤**：
+1. **统一存放并集中预编译**：
+    将源码全部放入 `deps/` 目录，并执行一次合并编译：
+    ```bash
+    cd ./deps
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    ```
+2. **编写业务代码**：
+    由于不受目录限制，您可以像引用普通三方包一样自由导入 SDK 消息体开始编写业务：
+    ```python
+    # main.py
+    import rclpy
+    from aimdk_msgs.srv import PlayTts
+    # ... 编写高阶业务
+    ```
+3. **环境注入与启动**：
+    创建启动包装脚本 `run.sh`，**并将以下内容保存到该脚本中**：
+    ```bash
+    #!/bin/bash
+    # 挂载底座与依赖总库
+    source /opt/ros/humble/setup.bash
+    source ./deps/install/setup.bash
+    
+    # 激活自带的 Python 运行环境（如使用 venv/conda）
+    source venv/bin/activate 
+    
+    # 最后，由本脚本一并拉起您的 Python 业务程序
+    python3 app/main.py
+    ```
+    以后每次启动程序，只需运行该包装脚本即可：
+    ```bash
+    ./run.sh
+    ```
+    *(注：如果是新建的脚本，首次执行前需要使用 `chmod +x run.sh` 命令为其添加执行权限。)*
+
+---
+
+### 3.2 C++ 开发集成
+C++ 集成相对复杂，因为涉及到 CMake 找包和链接的过程。ROS2 原生使用 `colcon` 构建系统。
+
+#### 3.2.1 方式 A：在 SDK 内部新增节点
+如果您希望利用现成的编译配置进行快速开发：
+1. **新建源文件**：将您的 `.cpp` 源文件（例如 `my_robot_app.cpp`）放入 `primebot_sdk/examples/cpp/src/` 目录下。
+2. **修改编译配置**：打开 `primebot_sdk/examples/cpp/CMakeLists.txt`，参考 `demo.cpp` 的写法，在文件末尾的 `ament_package()` 之前追加您的配置：
+    ```cmake
+    add_executable(my_robot_node src/my_robot_app.cpp)
+    ament_target_dependencies(my_robot_node rclcpp aimdk_msgs)
+    install(TARGETS
+      my_robot_node
+      DESTINATION lib/${PROJECT_NAME}
+    )
+    ```
+3. **编译工程**：回到 `primebot_sdk` 根目录执行编译：
+    ```bash
+    cd /path/to/your/primebot_sdk
+    colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
+    ```
+4. **加载与运行**：加载环境并运行节点：
+    ```bash
+    source /opt/ros/humble/setup.bash
+    source /path/to/your/primebot_sdk/install/setup.bash
+    ros2 run aimdk_examples_cpp my_robot_node
+    ```
+
+#### 3.2.2 方式 B：作为独立第三方库集成
+如果您希望保持主工程的整洁，建议将第三方库的获取与编译逻辑**封装在专用的 `cmake/` 目录脚本**中，利用 CMake 原生的 `FetchContent` 模块实现“一次配置、统一编译”。
+
+工程目录结构示例：
+```text
+my_project/
+├── cmake/
+│   ├── GetPrimebotSDK.cmake   # SDK 的外部抓取与编译封装脚本
+│   └── primebot_sdk/          # 可以将 SDK 源码放在这里，或通过网络拉取
+├── src/
+│   └── my_robot_app.cpp       # 您的业务与控制代码
+└── CMakeLists.txt             # 您的工程主 CMakeLists
+```
+
+**集成操作步骤**：
+1. **编写封装脚本**：在 `cmake/` 目录下创建 `GetPrimebotSDK.cmake`。通过这种方式能高度屏蔽底层依赖引入的复杂性：
+    ```cmake
+    include(FetchContent)
+    message(STATUS "Fetching primebot_sdk ...")
+
+    # 声明 SDK 来源（这里假定我们将 SDK 源码解压放在了同级的 primebot_sdk 目录中）
+    # 您也可以直接将其改为 URL 或 GIT_REPOSITORY 从远端自动拉取
+    FetchContent_Declare(
+      primebot_sdk
+      # 注意：SOURCE_DIR 应指向包含 CMakeLists.txt 的具体包目录
+      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/aimdk_msgs
+    )
+
+    # 使其可用：这会自动执行 SDK 内部的 CMakeLists 将其纳入您的工程编译树中
+    FetchContent_MakeAvailable(primebot_sdk)
+    ```
+
+2. **在主配置中调用脚本并链接**：在主项目的顶级 `CMakeLists.txt` 中引入上面写好的模块：
+    ```cmake
+    # ... 您的工程基础设置 (cmake_minimum_required, project 等) ...
+    
+    # 寻找必需的 ROS 2 底层通信库
+    find_package(rclcpp REQUIRED)
+    
+    # 1. 引入并执行第三方依赖的获取脚本
+    include(cmake/GetPrimebotSDK.cmake)
+    
+    # 【关键】确保程序在运行时能自动找到 build 目录下的共享库 (解决 .so 找不到的问题)
+    set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
+    set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
+    
+    # 2. 声明您的业务节点文件
+    add_executable(my_robot_node src/my_robot_app.cpp)
+    
+    # 3. 链接目标依赖项
+    target_link_libraries(my_robot_node 
+        PRIVATE
+        rclcpp::rclcpp
+        # 注意：使用 FetchContent 集成时，需显式链接具体的类型支持库以确保运行路径正确
+        aimdk_msgs__rosidl_typesupport_cpp 
+        aimdk_msgs__rosidl_typesupport_fastrtps_cpp
+    )
+    ```
+
+3. **编写业务代码**：
+    由于不受目录限制，您可以像引用普通三方包一样自由导入 SDK 头文件开始编写业务：
+    ```cpp
+    // src/my_robot_app.cpp
+    #include "rclcpp/rclcpp.hpp"
+    #include "aimdk_msgs/msg/mc_action.hpp" // 引用 SDK 中的接口
+
+    // ... 编写高阶业务
+    auto my_action = aimdk_msgs::msg::McAction();
+    my_action.action_name = "wave_hand";
+    ```
+
+4. **一次性整体编译工程**：配置完成后，直接在主工程目录下发起编译即可，系统会自动解析并打包编译 SDK 与您的代码：
+
+    ```bash
+    mkdir build && cd build
+    cmake ..
+    make 
+    ```
+
+5. **加载并运行**：
+
+    ```bash
+    source /opt/ros/humble/setup.bash
+    source install/setup.bash
+    ./build/my_robot_node
+    ```
+
+***
+
+## 4. 常见问题
+### 4.1 节点发现异常排查
+
+**Q: 运行 `ros2 node list` 无输出、或仅有 `/rosout`？**
+
+如果在 2.1.3 章节验证通讯环境时发现异常、无法与机器人发现彼此，通常代表底层的 DDS 节点发现（Discovery）机制受阻。请按以下步骤依次排查：
+1. **硬件与连通性检查**：确认机器人已开机，开发 PC 与机器人处于同一网段（例如 IP `10.1.1.99`）。使用 `ping 10.1.1.10` 和 `ping 10.1.1.100` 测试能正常收到回复，确认 ICMP 链路畅通。
+2. **`ROS_DOMAIN_ID` 不一致**：确保您的 PC 端没有设置其他杂乱的 `ROS_DOMAIN_ID` 环境变量（机器人默认通常是 `0`），导致与机器人的隔离在不同的域内。
+3. **多网卡冲突**：如果 PC 同时连接了多个网络（例如插着网线的同时连着 WiFi），DDS 初始化时可能绑定到了错误的网卡（如无线网卡）。此时 DDS 发现报文无法到达机器人局域网。**强烈建议在网线直连时，临时禁用其他无关网卡（如断开 WiFi 或关闭手机热点）**。
+
+> **参考**：关于更深度的跨网段或多复杂的 DDS 发现配置，可参阅官方指南 [ROS 2 Installation Troubleshooting（含多播与多网卡冲突章节）](https://docs.ros.org/en/humble/How-To-Guides/Installation-Troubleshooting.html#enable-multicast)。
+---
+### 4.2 数据收发异常排查
+
+**Q: 节点能看到，但 `ros2 topic echo` 超时无输出，或者 SDK 提示 `Service not available`？**
+
+这种现象说明 DDS 发现（Discovery）成功建连，但在**数据包实际传输（UDP Traffic）**或**消息反序列化**阶段失败了。请排查以下几点：
+1. **防火墙拦截 UDP 流量**：节点发现用的是特定的组播端口，而具体的数据收发使用的是随机大端口（往往几万起步）。部分系统的默认防火墙会拦截这些大端口的 UDP 数据传输报文。**请尝试关闭防火墙**：
+   ```bash
+   sudo ufw disable
+   ```
+2. **环境变量未加载（报错 Cannot determine type）**：在对特定自定义消息进行操作时，如果当前终端没有先执行 `source /path/to/your/primebot_sdk/install/setup.bash`（需替换为您实际路径），电脑环境里就不存在该消息协议，无法做二进制的反序列化导致报错。
+3. **消息按事件触发（无源数据）**：部分 Topic（如触摸事件），只有在发生物理接触时才会发送数据产生流量。如果您此时监听该 Topic，可能只需实际触发一次（如摸一下机器人头部）即可触发数据产生。
+---
+### 4.3 编译异常排查
+
+**Q: 执行 `colcon build` 编译报错（如提示编译失败或缺少依赖）？**
+
+如果 SDK 在编译阶段提示 `Failed` 或某些包引发严重错误，通常是因为系统环境不满足编译要求：
+1. **缺少 ROS2 构建工具或构建依赖**：请确保您已经完成了前面的 2.1 依赖安装步骤，特别是已安装了 `ros-humble-desktop` 及 `python3-colcon-common-extensions`。
+2. **终端未初始化 ROS2 基础环境**：在输入 `colcon build` 前，当前终端必须已经能够识别 ROS2 命令。可通过运行 `source /opt/ros/humble/setup.bash` 来加载系统级的基础环境。
+3. **C++ 编译器版本过低**：SDK 所用到的现代 C++ 特性需要 `g++` 支持。由于推荐系统为 Ubuntu 22.04，系统自带的默认编译器即满足要求，通常不会因此报错。
+
+> **参考**：更多关于底层构建工具配置的细节，可参阅官方指南 [Colcon documentation](https://design.ros2.org/articles/build_tool.html)。
+---
+### 4.4 机器人域配置
+
+**Q: 同一局域网有多台机器人，如何区分？**
+
+- 为每台机器人配置不同的 `ROS_DOMAIN_ID`。
+
+> **参考**：有关环境隔离机制的详细说明，请参阅官方指南 [The ROS_DOMAIN_ID](https://docs.ros.org/en/humble/Concepts/Intermediate/About-Domain-ID.html)。
+---
+### 4.5 colcon 安装异常排查
+
+**Q: 执行 `sudo apt install` 失败或提示“无法定位软件包”？**
+
+这种现象通常发生在软件源未更新或操作系统版本不匹配时：
+1. **更新软件源**：确保执行了 `sudo apt update`。如果依然无法找到，请确认是否已将 ROS 2 的官方软件源添加到系统的 APT 列表中。
+2. **官方安装指导**：参考 [colcon 官方安装方法总结](https://colcon.readthedocs.io/en/released/user/installation.html)。
+
+**Q: 安装完成后输入 `colcon` 提示 `command not found`？**
+
+这通常是环境变量没有生效的问题：
+1. **Shell 刷新**：尝试关闭当前终端并重新打开，或者执行 `hash -r` 强制刷新 shell 的命令缓存。
+2. **Pip 用户路径**：如果是通过 `pip3 install --user` 安装的，请检查 `~/.local/bin` 是否已加入 `PATH` 环境变量：
+   ```bash
+   # 测试路径是否存在
+   ls ~/.local/bin/colcon
+   # 临时加入环境变量（建议写入 ~/.bashrc）
+   export PATH=$PATH:$HOME/.local/bin
+   ```
+3. **彻底重新安装**：建议使用系统包管理器（APT）安装以获得最佳兼容性：
+   ```bash
+   sudo apt remove python3-colcon-common-extensions
+   sudo apt install python3-colcon-common-extensions
+   ```

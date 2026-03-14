@@ -1,0 +1,9 @@
+
+# Request 部分
+CommonRequest request
+
+---
+
+CommonTaskResponse response
+
+McInputSource input_source
