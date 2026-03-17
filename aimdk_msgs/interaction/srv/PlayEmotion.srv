@@ -1,87 +1,34 @@
-
-# --------------------------------------------------------------------------------------------------------------
-# 输入表情参数单独控制灯光播放
-# --------------------------------------------------------------------------------------------------------------
-
-# ----------------------------------------------------
-# 请求头
 CommonRequest header
 
-#----------------------------------------------------
-# 表情 id
-int32 emotion_id
+# play type, "emotion" or "file"
+string type
+
+# 播放的机器人内置表情id
+int32[] emotion_ids
 
 # 表情枚举
-int32 EMOTION_UNKNOWN = 0           # 未知
-int32 EMOTION_IDLE_BLINK = 1        # 眨眼
-
 int32 EMOTION_IDLE_CALM_1 = 10      # 平静-眼睛变化
 int32 EMOTION_IDLE_CALM_2 = 11      # 平静-眼睛变化
 int32 EMOTION_IDLE_CALM_3 = 12      # 平静-眼睛变化
-
-int32 EMOTION_IDLE_GAME = 20        # 平静-游戏
-int32 EMOTION_IDLE_CUTE_1 = 30      # 平静-卖萌
-int32 EMOTION_IDLE_CUTE_2 = 31      # 平静-卖萌
-int32 EMOTION_IDLE_CUTE_3 = 32      # 平静-卖萌
-int32 EMOTION_IDLE_CUTE_4 = 33      # 平静-卖萌
-int32 EMOTION_EYE_CLOSE = 40        # 闭上眼
-int32 EMOTION_EYE_OPEN = 50         # 睁开眼
-
 int32 EMOTION_EYE_BORING_1 = 60     # 无聊
-int32 EMOTION_EYE_ABNORMAL = 70     # 异常
-int32 EMOTION_EYE_SLEEPY = 80       # 睡着
-
 int32 EMOTION_EYE_HAPPY = 90        # 喜悦(快乐)
-
-int32 EMOTION_EYE_EXTREMEHAPPY_1 = 100 # 加倍开心
-int32 EMOTION_EYE_EXTREMEHAPPY_2 = 101 # 狂喜
-int32 EMOTION_EYE_SAD = 110         # 悲伤
-int32 EMOTION_EYE_SYMPATHY = 120    # 同情
-
+int32 EMOTION_EYE_JOY = 102         # 开心
 int32 EMOTION_EYE_CONFUSE = 130     # 困惑(疑惑)
-
-int32 EMOTION_EYE_SHOCK = 140       # 震惊
-int32 EMOTION_EYE_ACTCUTE = 150     # 撒娇
-int32 EMOTION_EYE_SERIOUS = 160     # 严肃
-int32 EMOTION_EYE_THINKING = 170    # 思考
-int32 EMOTION_EYE_ANGRY = 180       # 愤怒
-int32 EMOTION_EYE_EXTREMEANGRY = 190 # 加倍愤怒
-int32 EMOTION_EYE_ADORE = 200       # 崇拜
-int32 EMOTION_EYE_EXTREMEADORE = 210 # 加倍崇拜
-int32 EMOTION_EYE_CHARGE = 220      # 充电
-
 int32 EMOTION_EYE_TIRED_1 = 230     # 疲惫
-
 int32 EMOTION_EYE_CONFIDENT_1 = 240  # 自信
-
 int32 EMOTION_CLAM_LISTENING = 250 # 平静-聆听态 Listening
-
 int32 EMOTION_CLAM_THINKING = 260 # 平静-思考态 Thinking
-
 int32 EMOTION_CLAM_SPEAKING = 270 # 平静-说话态 Speaking
 
-# ----------------------------------------------------
-## 播放模式枚举
-uint8 mode 
+# 播放的视频地址
+string[] file_paths
 
-# 仅播放一次
-uint8 EMOTION_MODE_ONCE = 1
+#  优先级，高优先级视频会打断低优先级视频。默认值0
+int32 priority
 
-# 循环播放
-uint8 EMOTION_MODE_LOOP = 2
+# 整体配置的循环播放次数，大于0则播放具体次数。小于等于0，则表示循环播放 。默认值为1，表示播放一次
+int32 loop_count
 
-# ----------------------------------------------------
-# 播放优先级
-uint8 priority
-
-# ---------------------------------------------------- req
 ---
-# ---------------------------------------------------
 
-# ---------------------------------------------------- resp
-# 响应头
 CommonResponse header
-
-#-----------------------------------------------------
-# 是否控制成功
-bool success
