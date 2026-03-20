@@ -1,0 +1,6 @@
+CommonRequest request
+
+---
+
+ResponseHeader header
+JointStateArray[] states

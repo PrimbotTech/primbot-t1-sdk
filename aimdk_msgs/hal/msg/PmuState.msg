@@ -21,22 +21,28 @@ uint32 pmu_bool_status
 # bits 10~31: reserved            保留位
 
 # 电压信息
+float32 vcc_3v3_voltage         # LDO 3v3电压(单位: V)
+float32 vcc_1v8_voltage         # LDO 1v8电压(单位: V)
+float32 vcc_1v2_voltage         # LDO 1v2电压(单位: V)
+float32 nfc_5v_voltage          # NFC 5v电压(单位: V)
 float32 soc_5v_voltage          # Soc RK3576 5V电压(单位: V)
 float32 sys_5v_voltage          # 系统 5V电压(单位: V)
 float32 sys_12v_voltage         # 系统 12V电压(单位: V)
-float32 fore_leg_48v_voltage    # 上肢 48V电压(单位: V)
-float32 hind_leg_48v_voltage    # 下肢 48V电压(单位: V)
+float32 orin_12v_voltage        # Orin 12v电压(单位: V)
 float32 ext_12v_voltage         # 二开 12V电压(单位: V)
 float32 ext_24v_voltage         # 二开 24V电压(单位: V)
+float32 arm_48v_voltage         # 上肢 48V电压(单位: V)
+float32 leg_48v_voltage         # 下肢 48V电压(单位: V)
 
 # 电流信息
 float32 soc_5v_current          # Soc RK3576 5V电流(单位: A)
 float32 sys_5v_current          # 系统 5V电流(单位: A)
 float32 sys_12v_current         # 系统 12V电流(单位: A)
-float32 fore_leg_48v_current    # 上肢 48V电流(单位: A)
-float32 hind_leg_48v_current    # 下肢 48V电流(单位: A)
+float32 orin_12v_current        # Orin 12v电流(单位: A)
 float32 ext_12v_current         # 二开 12V电流(单位: A)
 float32 ext_24v_current         # 二开 24V电流(单位: A)
+float32 arm_48v_current         # 上肢 48V电流(单位: A)
+float32 leg_48v_current         # 下肢 48V电流(单位: A)
 
 # -------------- bms -------------- #
 # 版本信息
@@ -47,7 +53,7 @@ string bms_hardware_version     # 硬件版本
 string bms_software_version     # 软件版本
 
 # 状态信息
-uint32 bms_status_bits          # 状态位和状态码
+uint32 bms_status          # 状态位和状态码
 
 ## 状态位和状态码说明
 # bit 0: chargeFlag                           充电标志
@@ -73,12 +79,12 @@ uint32 bms_status_bits          # 状态位和状态码
 # bit 20: balanceLineResistanceOverHighFlag   电池包均衡线电阻超过上限标志
 # bit 21~31: reserved_11                      保留位
 
-uint16 battery_balance_line_resistance      # 电池包均衡线电阻（单位：mΩ）
-float64 battery_pack_voltage                # 电池包电压（单位：V）
-float64 battery_current                     # 电池包电流（单位：A，充电为正，放电为负）
-float64 battery_output_power                # 电池包输出功率（单位：W）
-float64 battery_temperature                 # 电池包当前温度（单位：℃）
-uint32 battery_remaining_capacity           # 当前电池剩余容量（单位：mAh）
-uint8 battery_remaining_capacity_percentage # 当前电池剩余容量百分比（单位：％）
-uint16 battery_cycle_count                  # 当前电池包完整循环次数（单位：次）
-uint32 battery_cycle_total_capacity         # 总充放电容量累计（单位：Ah）
+uint16 bms_balance_line_resistance      # 电池包均衡线电阻（单位：mΩ）
+uint32 bms_voltage                # 电池包电压（单位：V）
+int32 bms_current                     # 电池包电流（单位：A，充电为正，放电为负）
+int32 bms_power                # 电池包输出功率（单位：W）
+uint32 bms_temperature                 # 电池包当前温度（单位：℃）
+uint32 bms_remaining_capacity           # 当前电池剩余容量（单位：mAh）
+uint8 bms_remaining_capacity_percentage # 当前电池剩余容量百分比（单位：％）
+uint16 bms_cycle_count                  # 当前电池包完整循环次数（单位：次）
+uint32 bms_cycle_total_capacity         # 总充放电容量累计（单位：Ah）

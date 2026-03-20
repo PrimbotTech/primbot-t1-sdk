@@ -6,20 +6,6 @@ string type
 # 播放的机器人内置表情id
 int32[] emotion_ids
 
-# 表情枚举
-int32 EMOTION_IDLE_CALM_1 = 10      # 平静-眼睛变化
-int32 EMOTION_IDLE_CALM_2 = 11      # 平静-眼睛变化
-int32 EMOTION_IDLE_CALM_3 = 12      # 平静-眼睛变化
-int32 EMOTION_EYE_BORING_1 = 60     # 无聊
-int32 EMOTION_EYE_HAPPY = 90        # 喜悦(快乐)
-int32 EMOTION_EYE_JOY = 102         # 开心
-int32 EMOTION_EYE_CONFUSE = 130     # 困惑(疑惑)
-int32 EMOTION_EYE_TIRED_1 = 230     # 疲惫
-int32 EMOTION_EYE_CONFIDENT_1 = 240  # 自信
-int32 EMOTION_CLAM_LISTENING = 250 # 平静-聆听态 Listening
-int32 EMOTION_CLAM_THINKING = 260 # 平静-思考态 Thinking
-int32 EMOTION_CLAM_SPEAKING = 270 # 平静-说话态 Speaking
-
 # 播放的视频地址
 string[] file_paths
 

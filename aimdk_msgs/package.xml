@@ -4,8 +4,8 @@
   <version>1.0.0</version>
   <description>
     启元机器人二次开发 SDK。
-    同时提供：ROS2 Service/Message 接口定义（SLAM、PNC 桥接接口），
-    以及 Python 高层 API（Robot / mc / hal / interaction / slam / pnc）。
+    提供核心运行相关：ROS2 Service/Message 接口定义，
+    涵盖硬件抽象、运控及人机交互控制层级（mc / hal / interaction）。
   </description>
   <maintainer email="sdk@primebot.com">Primebot Team</maintainer>
   <license>Apache License 2.0</license>
