@@ -37,7 +37,7 @@ public:
     min_lateral_speed_ = 0.2; // m/s
     min_angular_speed_ = 0.1; // rad/s
 
-    RCLCPP_INFO(this->get_logger(), "🟢 Direct velocity control node started.");
+    RCLCPP_INFO(this->get_logger(), "Direct velocity control node started.");
   }
 
   void start_publish() {
@@ -69,14 +69,14 @@ public:
     auto retcode = rclcpp::spin_until_future_complete(
         this->shared_from_this(), future, timeout);
     if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
-      RCLCPP_ERROR(this->get_logger(), "❌ SetMcInputSource failed or timed out");
+      RCLCPP_ERROR(this->get_logger(), "SetMcInputSource failed or timed out");
       return false;
     }
 
     auto response = future.get();
     int state = response->response.state.value;
     RCLCPP_INFO(this->get_logger(),
-                "✅ Set input source succeeded: state=%d, task_id=%lu", state,
+                "Set input source succeeded: state=%d, task_id=%lu", state,
                 response->response.task_id);
     return true;
   }
@@ -86,7 +86,7 @@ public:
       return false;
     }
 
-    RCLCPP_INFO(this->get_logger(), "⏳ Querying current input source");
+    RCLCPP_INFO(this->get_logger(), "Querying current input source");
 
     auto request =
         std::make_shared<aimdk_msgs::srv::GetCurrentInputSource::Request>();
@@ -98,21 +98,21 @@ public:
     auto retcode = rclcpp::spin_until_future_complete(
         this->shared_from_this(), future, timeout);
     if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
-      RCLCPP_WARN(this->get_logger(), "❌ GetCurrentInputSource timed out");
+      RCLCPP_WARN(this->get_logger(), "GetCurrentInputSource timed out");
       return false;
     }
 
     auto response = future.get();
     if (response->response.header.code == 0) {
       RCLCPP_INFO(this->get_logger(),
-                  "🟢 Current input source: name=%s, priority=%d, timeout=%d",
+                  "Current input source: name=%s, priority=%d, timeout=%d",
                   response->input_source.name.c_str(),
                   response->input_source.priority,
                   response->input_source.timeout);
       return true;
     }
 
-    RCLCPP_WARN(this->get_logger(), "❌ GetCurrentInputSource returned code=%ld",
+    RCLCPP_WARN(this->get_logger(), "GetCurrentInputSource returned code=%ld",
                 response->response.header.code);
     return false;
   }
@@ -143,7 +143,7 @@ public:
       return true;
     } else if ((std::abs(forward) > max_forward_speed_) ||
                (std::abs(forward) < min_forward_speed_)) {
-      RCLCPP_ERROR(this->get_logger(), "❌ input value out of range, exiting");
+      RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
       return false;
     } else {
       forward_velocity_ = forward;
@@ -157,7 +157,7 @@ public:
       return true;
     } else if ((std::abs(lateral) > max_lateral_speed_) ||
                (std::abs(lateral) < min_lateral_speed_)) {
-      RCLCPP_ERROR(this->get_logger(), "❌ input value out of range, exiting");
+      RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
       return false;
     } else {
       lateral_velocity_ = lateral;
@@ -171,7 +171,7 @@ public:
       return true;
     } else if ((std::abs(angular) > max_angular_speed_) ||
                (std::abs(angular) < min_angular_speed_)) {
-      RCLCPP_ERROR(this->get_logger(), "❌ input value out of range, exiting");
+      RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
       return false;
     } else {
       angular_velocity_ = angular;
@@ -187,7 +187,7 @@ private:
       if (!rclcpp::ok()) {
         return false;
       }
-      RCLCPP_INFO(this->get_logger(), "⏳ Waiting for service: %s", service_name);
+      RCLCPP_INFO(this->get_logger(), "Waiting for service: %s", service_name);
     }
     return true;
   }
@@ -217,7 +217,7 @@ void signal_handler(int signal) {
   if (g_node) {
     g_node->clear_velocity();
     RCLCPP_INFO(g_node->get_logger(),
-                "⏳ Received signal %d, clearing velocity and shutting down...",
+                "Received signal %d, clearing velocity and shutting down...",
                 signal);
     g_node.reset();
   }
@@ -237,7 +237,7 @@ int main(int argc, char *argv[]) {
   
   if (!node->register_input_source()) {
     RCLCPP_ERROR(node->get_logger(),
-                 "❌ Input source registration failed, exiting");
+                 "Input source registration failed, exiting");
     g_node.reset();
     rclcpp::shutdown();
     return 1;
@@ -263,7 +263,7 @@ int main(int argc, char *argv[]) {
   }
 
   RCLCPP_INFO(node->get_logger(),
-              "🟢 Start publishing velocity for 5 seconds: Forward %.2f m/s, "
+              "Start publishing velocity for 5 seconds: Forward %.2f m/s, "
               "Lateral %.2f m/s, Angular %.2f rad/s",
               forward, lateral, angular);
 
@@ -283,7 +283,7 @@ int main(int argc, char *argv[]) {
 
   node->clear_velocity();
   node->publish_velocity();
-  RCLCPP_INFO(node->get_logger(), "✅ 5 seconds elapsed; robot stopped");
+  RCLCPP_INFO(node->get_logger(), "5 seconds elapsed; robot stopped");
 
   g_node.reset();
   rclcpp::shutdown();

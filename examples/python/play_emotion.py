@@ -29,11 +29,11 @@ class PlayEmotionClient(Node):
         self.loop_count = 1
 
         self.client = self.create_client(PlayEmotion, "/aimdk_5Fmsgs/srv/PlayEmotion")
-        self.get_logger().info("✅ PlayEmotion client node created.")
+        self.get_logger().info("PlayEmotion client node created.")
 
         while not self.client.wait_for_service(timeout_sec=2.0):
-            self.get_logger().info("⏳ Waiting for service...")
-        self.get_logger().info("🟢 Service available, ready to send request.")
+            self.get_logger().info("Waiting for service...")
+        self.get_logger().info("Service available, ready to send request.")
 
     def send_request(self) -> bool:
         try:
@@ -53,7 +53,7 @@ class PlayEmotionClient(Node):
                 request.file_paths = list(self.file_paths)
 
             self.get_logger().info(
-                "📨 Sending PlayEmotion request: "
+                "Sending PlayEmotion request: "
                 f"type={request.type}, "
                 f"emotion_ids={list(request.emotion_ids)}, "
                 f"file_paths={list(request.file_paths)}, "
@@ -68,12 +68,12 @@ class PlayEmotionClient(Node):
             future = self.client.call_async(request)
             rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
             if not future.done():
-                self.get_logger().error("❌ Service call failed or timed out.")
+                self.get_logger().error("Service call failed or timed out.")
                 return False
 
             response = future.result()
             if response is None:
-                self.get_logger().error("❌ Service call failed or timed out.")
+                self.get_logger().error("Service call failed or timed out.")
                 return False
 
             code = response.header.header.code
@@ -86,31 +86,31 @@ class PlayEmotionClient(Node):
             )
 
             if code == 0 or status == CommonState.SUCCESS:
-                self.get_logger().info("✅ PlayEmotion request accepted.")
+                self.get_logger().info("PlayEmotion request accepted.")
                 return True
 
-            self.get_logger().error("❌ PlayEmotion request failed.")
+            self.get_logger().error("PlayEmotion request failed.")
             return False
         except Exception as error:  # noqa: BLE001
-            self.get_logger().error(f"❌ Exception occurred: {error}")
+            self.get_logger().error(f"Exception occurred: {error}")
             return False
 
     def validate_parameters(self) -> bool:
         if self.type not in ("emotion", "file"):
             self.get_logger().error(
-                f"❌ Invalid parameter 'type': {self.type}. Use 'emotion' or 'file'."
+                f"Invalid parameter 'type': {self.type}. Use 'emotion' or 'file'."
             )
             return False
 
         if self.type == "emotion" and not self.emotion_ids:
             self.get_logger().error(
-                "❌ Parameter 'emotion_ids' must be set when type=emotion."
+                "Parameter 'emotion_ids' must be set when type=emotion."
             )
             return False
 
         if self.type == "file" and not self.file_paths:
             self.get_logger().error(
-                "❌ Parameter 'file_paths' must be set when type=file."
+                "Parameter 'file_paths' must be set when type=file."
             )
             return False
 
@@ -126,7 +126,7 @@ def main(args=None):
         return 0 if ok else 1
     except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("main").error(
-            f"❌ Program exited with exception: {error}"
+            f"Program exited with exception: {error}"
         )
         return 1
     finally:

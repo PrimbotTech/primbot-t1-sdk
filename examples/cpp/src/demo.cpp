@@ -6,8 +6,8 @@
 #include "aimdk_msgs/msg/tts_priority_level.hpp"
 #include "aimdk_msgs/srv/play_emotion.hpp"
 #include "aimdk_msgs/srv/play_tts.hpp"
+#include "aimdk_msgs/srv/led_strip_command.hpp"
 #include "aimdk_msgs/srv/set_mc_preset_motion.hpp"
-#include "aimdk_msgs/srv/set_rgb_strip.hpp"
 #include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
 
@@ -27,7 +27,7 @@ using namespace std::chrono_literals;
 namespace {
 
 constexpr char kTouchTopic[] = "/aima/hal/touch/state";
-constexpr char kSetRgbStripService[] = "/aimdk_5Fmsgs/srv/SetRgbStrip";
+constexpr char kLedStripCommandService[] = "/aimdk_5Fmsgs/srv/LedStripCommand";
 constexpr char kPlayEmotionService[] = "/aimdk_5Fmsgs/srv/PlayEmotion";
 constexpr char kPlayTtsService[] = "/aimdk_5Fmsgs/srv/PlayTts";
 constexpr char kSetPresetMotionService[] = "/aimdk_5Fmsgs/srv/SetMcPresetMotion";
@@ -57,8 +57,9 @@ enum class DemoState {
 class SwipeHeartDemo : public rclcpp::Node {
 public:
   SwipeHeartDemo() : Node("swipe_heart_demo") {
-    set_rgb_strip_client_ =
-        this->create_client<aimdk_msgs::srv::SetRgbStrip>(kSetRgbStripService);
+    led_strip_client_ =
+        this->create_client<aimdk_msgs::srv::LedStripCommand>(
+            kLedStripCommandService);
     play_emotion_client_ =
         this->create_client<aimdk_msgs::srv::PlayEmotion>(kPlayEmotionService);
     play_tts_client_ =
@@ -89,7 +90,7 @@ public:
 
     start_worker();
 
-    if (!set_led_mode(aimdk_msgs::srv::SetRgbStrip::Request::LED_WHITE_ON)) {
+    if (!set_led_mode(aimdk_msgs::srv::LedStripCommand::Request::LED_WHITE_ON)) {
       RCLCPP_WARN(this->get_logger(),
                   "Failed to set idle light during startup, continue anyway.");
     }
@@ -228,7 +229,8 @@ private:
                   "Emotion playback was not accepted. Continue demo flow.");
     }
 
-    if (!set_led_mode(aimdk_msgs::srv::SetRgbStrip::Request::LED_GREEN_FLOW)) {
+    if (!set_led_mode(
+            aimdk_msgs::srv::LedStripCommand::Request::LED_GREEN_FLOW)) {
       RCLCPP_WARN(this->get_logger(),
                   "Failed to set busy light, continue demo flow.");
     }
@@ -250,14 +252,15 @@ private:
     }
 
     if (!is_stop_requested() &&
-        !set_led_mode(aimdk_msgs::srv::SetRgbStrip::Request::LED_WHITE_ON)) {
+        !set_led_mode(
+            aimdk_msgs::srv::LedStripCommand::Request::LED_WHITE_ON)) {
       RCLCPP_WARN(this->get_logger(),
                   "Failed to restore idle light after demo flow.");
     }
   }
 
   bool wait_for_required_services() {
-    return wait_for_service(set_rgb_strip_client_, kSetRgbStripService) &&
+    return wait_for_service(led_strip_client_, kLedStripCommandService) &&
            wait_for_service(play_tts_client_, kPlayTtsService) &&
            wait_for_service(set_preset_motion_client_, kSetPresetMotionService);
   }
@@ -277,33 +280,37 @@ private:
   }
 
   bool set_led_mode(uint8_t led_strip_mode) {
-    auto request = std::make_shared<aimdk_msgs::srv::SetRgbStrip::Request>();
+    auto request =
+        std::make_shared<aimdk_msgs::srv::LedStripCommand::Request>();
     request->request = aimdk_msgs::msg::CommonRequest();
     request->request.header.stamp = this->now();
     request->led_strip_mode = led_strip_mode;
+    request->r = 0;
+    request->g = 0;
+    request->b = 0;
+    request->period = 0;
 
-    auto future = set_rgb_strip_client_->async_send_request(request);
+    auto future = led_strip_client_->async_send_request(request);
     if (future.wait_for(kServiceCallTimeout) != std::future_status::ready) {
       RCLCPP_ERROR(this->get_logger(),
-                   "SetRgbStrip timed out after %ld ms.",
+                   "LedStripCommand timed out after %ld ms.",
                    kServiceCallTimeout.count());
       return false;
     }
 
     const auto response = future.get();
-    const auto code = response->response.header.code;
-    const auto status = response->response.status.value;
-    const bool ok =
-        code == 0 ||
-        status == aimdk_msgs::msg::CommonState::SUCCESS;
+    const auto code = response->header.code;
+    const auto status_code = response->status_code;
+    const bool ok = code == 0 && status_code == 1;
 
     RCLCPP_INFO(this->get_logger(),
-                "SetRgbStrip response: code=%ld, status=%d, result=%u",
-                code, status, static_cast<unsigned int>(response->result));
+                "LedStripCommand response: code=%ld, status_code=%u", code,
+                static_cast<unsigned int>(status_code));
 
     if (!ok) {
-      RCLCPP_ERROR(this->get_logger(), "SetRgbStrip rejected: %s",
-                   response->response.message.c_str());
+      RCLCPP_ERROR(this->get_logger(),
+                   "LedStripCommand rejected for led_strip_mode=%u.",
+                   static_cast<unsigned int>(led_strip_mode));
     }
     return ok;
   }
@@ -486,7 +493,7 @@ private:
   bool has_pending_trigger_{false};
   uint8_t pending_trigger_{aimdk_msgs::msg::TouchState::TOUCH_EVENT_NONE};
 
-  rclcpp::Client<aimdk_msgs::srv::SetRgbStrip>::SharedPtr set_rgb_strip_client_;
+  rclcpp::Client<aimdk_msgs::srv::LedStripCommand>::SharedPtr led_strip_client_;
   rclcpp::Client<aimdk_msgs::srv::PlayEmotion>::SharedPtr play_emotion_client_;
   rclcpp::Client<aimdk_msgs::srv::PlayTts>::SharedPtr play_tts_client_;
   rclcpp::Client<aimdk_msgs::srv::SetMcPresetMotion>::SharedPtr

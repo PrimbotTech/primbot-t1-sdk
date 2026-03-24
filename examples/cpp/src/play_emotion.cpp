@@ -54,16 +54,16 @@ public:
 
     client_ = this->create_client<aimdk_msgs::srv::PlayEmotion>(
         "/aimdk_5Fmsgs/srv/PlayEmotion");
-    RCLCPP_INFO(this->get_logger(), "✅ PlayEmotion client node created.");
+    RCLCPP_INFO(this->get_logger(), "PlayEmotion client node created.");
 
     while (!client_->wait_for_service(std::chrono::seconds(2))) {
       if (!rclcpp::ok()) {
         return;
       }
-      RCLCPP_INFO(this->get_logger(), "⏳ Waiting for service...");
+      RCLCPP_INFO(this->get_logger(), "Waiting for service...");
     }
     RCLCPP_INFO(this->get_logger(),
-                "🟢 Service available, ready to send request.");
+                "Service available, ready to send request.");
   }
 
   bool send_request() {
@@ -90,7 +90,7 @@ public:
       request->header.header.stamp = this->now();
 
       RCLCPP_INFO(this->get_logger(),
-                  "📨 Sending PlayEmotion request: type=%s emotion_ids=%zu "
+                  "Sending PlayEmotion request: type=%s emotion_ids=%zu "
                   "file_paths=%zu priority=%d loop_count=%d",
                   request->type.c_str(), request->emotion_ids.size(),
                   request->file_paths.size(), request->priority,
@@ -111,7 +111,7 @@ public:
           shared_from_this(), future, std::chrono::seconds(2));
       if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
         RCLCPP_ERROR(this->get_logger(),
-                     "❌ Service call failed or timed out.");
+                     "Service call failed or timed out.");
         return false;
       }
 
@@ -124,14 +124,14 @@ public:
                   response->header.message.c_str());
 
       if (code == 0 || status == aimdk_msgs::msg::CommonState::SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "✅ PlayEmotion request accepted.");
+        RCLCPP_INFO(this->get_logger(), "PlayEmotion request accepted.");
         return true;
       }
 
-      RCLCPP_ERROR(this->get_logger(), "❌ PlayEmotion request failed.");
+      RCLCPP_ERROR(this->get_logger(), "PlayEmotion request failed.");
       return false;
     } catch (const std::exception &e) {
-      RCLCPP_ERROR(this->get_logger(), "❌ Exception occurred: %s", e.what());
+      RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
       return false;
     }
   }
@@ -140,20 +140,20 @@ private:
   bool validate_parameters() {
     if (type_ != "emotion" && type_ != "file") {
       RCLCPP_ERROR(this->get_logger(),
-                   "❌ Invalid parameter 'type': %s. Use 'emotion' or 'file'.",
+                   "Invalid parameter 'type': %s. Use 'emotion' or 'file'.",
                    type_.c_str());
       return false;
     }
 
     if (type_ == "emotion" && emotion_ids_.empty()) {
       RCLCPP_ERROR(this->get_logger(),
-                   "❌ Parameter 'emotion_ids' must be set when type=emotion.");
+                   "Parameter 'emotion_ids' must be set when type=emotion.");
       return false;
     }
 
     if (type_ == "file" && file_paths_.empty()) {
       RCLCPP_ERROR(this->get_logger(),
-                   "❌ Parameter 'file_paths' must be set when type=file.");
+                   "Parameter 'file_paths' must be set when type=file.");
       return false;
     }
 
@@ -183,7 +183,7 @@ int main(int argc, char *argv[]) {
     return ok ? 0 : 1;
   } catch (const std::exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("main"),
-                 "❌ Program exited with exception: %s", e.what());
+                 "Program exited with exception: %s", e.what());
     return 1;
   }
 }

@@ -11,6 +11,8 @@
 
   <depend>rclcpp</depend>
   <depend>aimdk_msgs</depend>
+  <depend>opencv4</depend>
+  <depend>ruckig</depend>
 
   <export>
     <build_type>ament_cmake</build_type>

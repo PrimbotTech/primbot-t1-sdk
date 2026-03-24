@@ -25,14 +25,14 @@ class PlayAudioFileClient(Node):
         self.priority_weight = 0
 
         self.client = self.create_client(PlayAudioFile, self.service_name)
-        self.get_logger().info("✅ PlayAudioFile client node created.")
+        self.get_logger().info("PlayAudioFile client node created.")
 
     def wait_for_service(self) -> bool:
         while not self.client.wait_for_service(timeout_sec=2.0):
             if not rclpy.ok():
                 return False
-            self.get_logger().info(f"⏳ Waiting for service: {self.service_name}")
-        self.get_logger().info("🟢 Service available, ready to send request.")
+            self.get_logger().info(f"Waiting for service: {self.service_name}")
+        self.get_logger().info("Service available, ready to send request.")
         return True
 
     def send_request(self) -> bool:
@@ -49,7 +49,7 @@ class PlayAudioFileClient(Node):
             request.file.file_path = self.file_path
 
             if not request.file.file_name:
-                self.get_logger().error("❌ file_name is empty.")
+                self.get_logger().error("file_name is empty.")
                 return False
 
             request.file.info.channels = self.channels
@@ -61,7 +61,7 @@ class PlayAudioFileClient(Node):
             request.file.priority_weight = self.priority_weight
 
             self.get_logger().info(
-                "📨 Sending PlayAudioFile request: "
+                "Sending PlayAudioFile request: "
                 f"file={request.file.file_name}, "
                 f"path={request.file.file_path}, "
                 f"pkg={request.file.pkg_name}, "
@@ -76,12 +76,12 @@ class PlayAudioFileClient(Node):
             future = self.client.call_async(request)
             rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
             if not future.done():
-                self.get_logger().error("❌ PlayAudioFile call failed or timed out.")
+                self.get_logger().error("PlayAudioFile call failed or timed out.")
                 return False
 
             response = future.result()
             if response is None:
-                self.get_logger().error("❌ PlayAudioFile call failed or timed out.")
+                self.get_logger().error("PlayAudioFile call failed or timed out.")
                 return False
 
             code = response.reponse.header.code
@@ -90,18 +90,18 @@ class PlayAudioFileClient(Node):
 
             if ok:
                 self.get_logger().info(
-                    "✅ PlayAudioFile accepted. "
+                    "PlayAudioFile accepted. "
                     f"code={code} status={status} msg={response.reponse.message}"
                 )
                 return True
 
             self.get_logger().error(
-                "❌ PlayAudioFile rejected. "
+                "PlayAudioFile rejected. "
                 f"code={code} status={status} msg={response.reponse.message}"
             )
             return False
         except Exception as error:  # noqa: BLE001
-            self.get_logger().error(f"❌ Exception occurred: {error}")
+            self.get_logger().error(f"Exception occurred: {error}")
             return False
 
 
@@ -114,7 +114,7 @@ def main(args=None):
         return 0 if ok else 1
     except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("main").error(
-            f"❌ Program exited with exception: {error}"
+            f"Program exited with exception: {error}"
         )
         return 1
     finally:
