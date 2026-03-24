@@ -52,7 +52,7 @@ public:
         this->declare_parameter<std::string>("file_path", file_path_);
 
     client_ = this->create_client<aimdk_msgs::srv::PlayAudioFile>(service_name_);
-    RCLCPP_INFO(this->get_logger(), "✅ PlayAudioFile client node created.");
+    RCLCPP_INFO(this->get_logger(), "PlayAudioFile client node created.");
   }
 
   bool send_request() {
@@ -69,7 +69,7 @@ public:
     request->file.file_path = file_path_;
 
     if (request->file.file_name.empty()) {
-      RCLCPP_ERROR(this->get_logger(), "❌ file_name is empty.");
+      RCLCPP_ERROR(this->get_logger(), "file_name is empty.");
       return false;
     }
 
@@ -82,7 +82,7 @@ public:
     request->file.priority_weight = static_cast<uint32_t>(priority_weight_);
 
     RCLCPP_INFO(this->get_logger(),
-                "📨 Sending PlayAudioFile request: file=%s, path=%s, pkg=%s, "
+                "Sending PlayAudioFile request: file=%s, path=%s, pkg=%s, "
                 "ch=%d, sr=%d, fmt=%s, coding=%s, priority=%d, weight=%d",
                 request->file.file_name.c_str(), request->file.file_path.c_str(),
                 request->file.pkg_name.c_str(), channels_, sample_rate_,
@@ -94,7 +94,7 @@ public:
                                                      std::chrono::seconds(5));
     if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
       RCLCPP_ERROR(this->get_logger(),
-                   "❌ PlayAudioFile call failed or timed out.");
+                   "PlayAudioFile call failed or timed out.");
       return false;
     }
 
@@ -106,12 +106,12 @@ public:
 
     if (ok) {
       RCLCPP_INFO(this->get_logger(),
-                  "✅ PlayAudioFile accepted. code=%ld status=%d msg=%s", code,
+                  "PlayAudioFile accepted. code=%ld status=%d msg=%s", code,
                   status, response->reponse.message.c_str());
       return true;
     }
 
-    RCLCPP_ERROR(this->get_logger(), "❌ PlayAudioFile rejected. code=%ld status=%d "
+    RCLCPP_ERROR(this->get_logger(), "PlayAudioFile rejected. code=%ld status=%d "
                                      "msg=%s",
                  code, status, response->reponse.message.c_str());
     return false;
@@ -123,10 +123,10 @@ private:
       if (!rclcpp::ok()) {
         return false;
       }
-      RCLCPP_INFO(this->get_logger(), "⏳ Waiting for service: %s",
+      RCLCPP_INFO(this->get_logger(), "Waiting for service: %s",
                   service_name_.c_str());
     }
-    RCLCPP_INFO(this->get_logger(), "🟢 Service available, ready to send request.");
+    RCLCPP_INFO(this->get_logger(), "Service available, ready to send request.");
     return true;
   }
 
@@ -159,7 +159,7 @@ int main(int argc, char *argv[]) {
     return ok ? 0 : 1;
   } catch (const std::exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("main"),
-                 "❌ Program exited with exception: %s", e.what());
+                 "Program exited with exception: %s", e.what());
     return 1;
   }
 }

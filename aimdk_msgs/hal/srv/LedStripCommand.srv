@@ -1,0 +1,50 @@
+# Request
+CommonRequest request
+
+# 灯带模式
+uint8 led_strip_mode
+
+## led_strip_mode: 灯带模式枚举
+uint8 LED_ALL_OFF                  = 0    # 全部熄灭
+uint8 LED_GREEN_FLOW               = 1    # 绿色流水
+uint8 LED_RAINBOW                  = 2    # 彩虹
+uint8 LED_DANCING                  = 3    # 律动
+uint8 LED_TWINKLE                  = 4    # 星光闪烁
+uint8 LED_TAIL_INCREASE            = 5    # 尾部渐亮
+uint8 LED_TAIL_DECREASE            = 6    # 尾部渐暗
+uint8 LED_FOUR_TO_TWO_LEGS         = 7    # 白色流水-蓝色流水交替
+uint8 LED_TWO_TO_FOUR_LEGS         = 8    # 蓝色流水-白色流水交替
+uint8 LED_START_UP                 = 9    # 白色常亮r=g=b=128
+uint8 LED_DISPLAY_CHARGING         = 10   # 白色流水
+uint8 LED_DISPLAY_FAULT            = 11   # 红色快闪
+uint8 LED_DISPLAY_25_LOW_BATTERY   = 12   # 黄色长亮
+uint8 LED_DISPLAY_15_LOW_BATTERY   = 13   # 橙红闪烁
+uint8 LED_DISPLAY_POWER_OFF        = 14   # 白色从亮到暗渐变
+uint8 LED_DISPLAY_POWER_ON         = 15   # 白色从暗到亮渐变
+uint8 LED_WHITE_FLOW               = 16   # 白色填充
+uint8 LED_WHITE_ON                 = 17   # 白色常亮r=g=b=150
+uint8 LED_DISPLAY_25_LOW_TRANSFORM = 18   # 黄色流水
+uint8 LED_DISPLAY_15_LOW_TRANSFORM = 19   # 橙红流水
+uint8 LED_WHITE_BREATH             = 20   # 白色呼吸
+uint8 LED_CUSTOM                   = 255  # 自定义模式
+##
+
+# 红色分量，自定义模式下生效
+uint8 r
+
+# 绿色分量，自定义模式下生效
+uint8 g
+
+# 蓝色分量，自定义模式下生效
+uint8 b
+
+# 周期，自定义模式下生效。单位ms，0表示常亮，非0值表示点亮或者熄灭的保持时间
+uint16 period
+---
+
+
+# 响应头
+ResponseHeader header
+
+# 设置是否成功，1-成功，0-失败
+uint16 status_code

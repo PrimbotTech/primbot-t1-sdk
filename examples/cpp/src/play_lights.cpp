@@ -1,6 +1,5 @@
 #include "aimdk_msgs/msg/common_request.hpp"
-#include "aimdk_msgs/msg/common_state.hpp"
-#include "aimdk_msgs/srv/set_rgb_strip.hpp"
+#include "aimdk_msgs/srv/led_strip_command.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
@@ -25,29 +24,40 @@ void signal_handler(int signal) {
 class PlayLightsClient : public rclcpp::Node {
 public:
   PlayLightsClient() : Node("play_lights_client") {
-    client_ = this->create_client<aimdk_msgs::srv::SetRgbStrip>(
-        "/aimdk_5Fmsgs/srv/SetRgbStrip");
-    RCLCPP_INFO(this->get_logger(), "✅ SetRgbStrip client node created.");
+    client_ = this->create_client<aimdk_msgs::srv::LedStripCommand>(
+        "/aimdk_5Fmsgs/srv/LedStripCommand");
+    RCLCPP_INFO(this->get_logger(), "LedStripCommand client node created.");
 
     while (!client_->wait_for_service(std::chrono::seconds(2))) {
       if (!rclcpp::ok()) {
         return;
       }
-      RCLCPP_INFO(this->get_logger(), "⏳ Service unavailable, waiting...");
+      RCLCPP_INFO(this->get_logger(), "Service unavailable, waiting...");
     }
     RCLCPP_INFO(this->get_logger(),
-                "🟢 Service available, ready to send request.");
+                "Service available, ready to send request.");
   }
 
-  bool send_request(uint8_t led_strip_mode) {
+  bool send_request(uint8_t led_strip_mode, uint8_t r, uint8_t g, uint8_t b,
+                    uint16_t period) {
     try {
-      auto request = std::make_shared<aimdk_msgs::srv::SetRgbStrip::Request>();
+      auto request =
+          std::make_shared<aimdk_msgs::srv::LedStripCommand::Request>();
       request->request = aimdk_msgs::msg::CommonRequest();
       request->led_strip_mode = led_strip_mode;
+      request->r = r;
+      request->g = g;
+      request->b = b;
+      request->period = period;
 
       RCLCPP_INFO(this->get_logger(),
-                  "📨 Sending SetRgbStrip request: led_strip_mode=%u",
-                  static_cast<unsigned int>(request->led_strip_mode));
+                  "Sending LedStripCommand request: led_strip_mode=%u, "
+                  "r=%u, g=%u, b=%u, period=%u",
+                  static_cast<unsigned int>(request->led_strip_mode),
+                  static_cast<unsigned int>(request->r),
+                  static_cast<unsigned int>(request->g),
+                  static_cast<unsigned int>(request->b),
+                  static_cast<unsigned int>(request->period));
 
       const std::chrono::milliseconds timeout(2000);
       request->request.header.stamp = this->now();
@@ -56,25 +66,25 @@ public:
           shared_from_this(), future, timeout);
       if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
         RCLCPP_ERROR(this->get_logger(),
-                    "❌ SetRgbStrip service timeout after %ld ms.",
-                    timeout.count());
+                     "LedStripCommand service timeout after %ld ms.",
+                     timeout.count());
         return false;
       }
 
       auto response = future.get();
-      const auto code = response->response.header.code;
-      const auto status = response->response.status.value;
+      const auto code = response->header.code;
+      const auto status_code = response->status_code;
       RCLCPP_INFO(this->get_logger(),
-                  "Response: code=%ld, status=%d, message=%s, result=%u",
-                  code, status, response->response.message.c_str(),
-                  static_cast<unsigned int>(response->result));
+                  "Response: code=%ld, status_code=%u", code,
+                  static_cast<unsigned int>(status_code));
 
-      if (code == 0 || status == aimdk_msgs::msg::CommonState::SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "✅ SetRgbStrip request accepted.");
+      if (code == 0 && status_code == 1) {
+        RCLCPP_INFO(this->get_logger(),
+                    "LedStripCommand request accepted.");
         return true;
       }
 
-      RCLCPP_ERROR(this->get_logger(), "❌ SetRgbStrip request failed.");
+      RCLCPP_ERROR(this->get_logger(), "LedStripCommand request failed.");
       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
@@ -83,7 +93,7 @@ public:
   }
 
 private:
-  rclcpp::Client<aimdk_msgs::srv::SetRgbStrip>::SharedPtr client_;
+  rclcpp::Client<aimdk_msgs::srv::LedStripCommand>::SharedPtr client_;
 };
 
 int main(int argc, char *argv[]) {
@@ -93,7 +103,11 @@ int main(int argc, char *argv[]) {
     signal(SIGTERM, signal_handler);
 
     uint8_t led_strip_mode =
-        aimdk_msgs::srv::SetRgbStrip::Request::LED_WHITE_ON;
+        aimdk_msgs::srv::LedStripCommand::Request::LED_WHITE_ON;
+    uint8_t r = 0;
+    uint8_t g = 0;
+    uint8_t b = 0;
+    uint16_t period = 0;
 
     int mode_input = 0;
     std::cout << "Enter led_strip_mode (default "
@@ -101,11 +115,34 @@ int main(int argc, char *argv[]) {
     std::cin >> mode_input;
     led_strip_mode = static_cast<uint8_t>(mode_input);
 
+    if (led_strip_mode ==
+        aimdk_msgs::srv::LedStripCommand::Request::LED_CUSTOM) {
+      int channel_input = 0;
+      int period_input = 1000;
+
+      std::cout << "Enter r (default 0): ";
+      std::cin >> channel_input;
+      r = static_cast<uint8_t>(channel_input);
+
+      std::cout << "Enter g (default 0): ";
+      std::cin >> channel_input;
+      g = static_cast<uint8_t>(channel_input);
+
+      std::cout << "Enter b (default 255): ";
+      channel_input = 255;
+      std::cin >> channel_input;
+      b = static_cast<uint8_t>(channel_input);
+
+      std::cout << "Enter period(ms, default 1000): ";
+      std::cin >> period_input;
+      period = static_cast<uint16_t>(period_input);
+    }
+
     g_node = std::make_shared<PlayLightsClient>();
     auto client = std::dynamic_pointer_cast<PlayLightsClient>(g_node);
     bool ok = false;
     if (client) {
-      ok = client->send_request(led_strip_mode);
+      ok = client->send_request(led_strip_mode, r, g, b, period);
     }
 
     g_node.reset();

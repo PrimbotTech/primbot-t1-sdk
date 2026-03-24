@@ -27,20 +27,26 @@ private:
         << "  pmu_software_version: " << msg->pmu_software_version << "\n"
         << "  pmu_bool_status: " << msg->pmu_bool_status << "\n";
 
-    oss << "  soc_5v_voltage:       " << msg->soc_5v_voltage << " V\n"
+    oss << "  vcc_3v3_voltage:      " << msg->vcc_3v3_voltage << " V\n"
+        << "  vcc_1v8_voltage:      " << msg->vcc_1v8_voltage << " V\n"
+        << "  vcc_1v2_voltage:      " << msg->vcc_1v2_voltage << " V\n"
+        << "  nfc_5v_voltage:       " << msg->nfc_5v_voltage << " V\n"
+        << "  soc_5v_voltage:       " << msg->soc_5v_voltage << " V\n"
         << "  sys_5v_voltage:       " << msg->sys_5v_voltage << " V\n"
         << "  sys_12v_voltage:      " << msg->sys_12v_voltage << " V\n"
-        << "  fore_leg_48v_voltage: " << msg->fore_leg_48v_voltage << " V\n"
-        << "  hind_leg_48v_voltage: " << msg->hind_leg_48v_voltage << " V\n"
+        << "  orin_12v_voltage:     " << msg->orin_12v_voltage << " V\n"
         << "  ext_12v_voltage:      " << msg->ext_12v_voltage << " V\n"
         << "  ext_24v_voltage:      " << msg->ext_24v_voltage << " V\n"
+        << "  arm_48v_voltage:      " << msg->arm_48v_voltage << " V\n"
+        << "  leg_48v_voltage:      " << msg->leg_48v_voltage << " V\n"
         << "  soc_5v_current:       " << msg->soc_5v_current << " A\n"
         << "  sys_5v_current:       " << msg->sys_5v_current << " A\n"
         << "  sys_12v_current:      " << msg->sys_12v_current << " A\n"
-        << "  fore_leg_48v_current: " << msg->fore_leg_48v_current << " A\n"
-        << "  hind_leg_48v_current: " << msg->hind_leg_48v_current << " A\n"
+        << "  orin_12v_current:     " << msg->orin_12v_current << " A\n"
         << "  ext_12v_current:      " << msg->ext_12v_current << " A\n"
-        << "  ext_24v_current:      " << msg->ext_24v_current << " A\n";
+        << "  ext_24v_current:      " << msg->ext_24v_current << " A\n"
+        << "  arm_48v_current:      " << msg->arm_48v_current << " A\n"
+        << "  leg_48v_current:      " << msg->leg_48v_current << " A\n";
 
     oss << "  bms_manufacturer:                 " << msg->bms_manufacturer << "\n"
         << "  bms_serial_number:                " << msg->bms_serial_number << "\n"
@@ -50,28 +56,23 @@ private:
         << "\n"
         << "  bms_software_version:             " << msg->bms_software_version
         << "\n"
-        << "  bms_status_bits:                 " << msg->bms_status_bits
-        << "\n";
+        << "  bms_status:                       " << msg->bms_status << "\n";
 
-    oss << "  battery_balance_line_resistance:  "
-        << msg->battery_balance_line_resistance << " mOhm\n"
-        << "  battery_pack_voltage:             " << msg->battery_pack_voltage
-        << " V\n"
-        << "  battery_current:                  " << msg->battery_current
-        << " A\n"
-        << "  battery_output_power:             " << msg->battery_output_power
-        << " W\n"
-        << "  battery_temperature:              " << msg->battery_temperature
+    oss << "  bms_balance_line_resistance:      "
+        << msg->bms_balance_line_resistance << " mOhm\n"
+        << "  bms_voltage:                      " << msg->bms_voltage << " V\n"
+        << "  bms_current:                      " << msg->bms_current << " A\n"
+        << "  bms_power:                        " << msg->bms_power << " W\n"
+        << "  bms_temperature:                  " << msg->bms_temperature
         << " °C\n"
-        << "  battery_remaining_capacity:       "
-        << msg->battery_remaining_capacity << " mAh\n"
-        << "  battery_remaining_capacity_pct:   "
-        << static_cast<int>(msg->battery_remaining_capacity_percentage)
-        << " %\n"
-        << "  battery_cycle_count:              " << msg->battery_cycle_count
+        << "  bms_remaining_capacity:           "
+        << msg->bms_remaining_capacity << " mAh\n"
+        << "  bms_remaining_capacity_pct:       "
+        << static_cast<int>(msg->bms_remaining_capacity_percentage) << " %\n"
+        << "  bms_cycle_count:                  " << msg->bms_cycle_count
         << "\n"
-        << "  battery_cycle_total_capacity:     "
-        << msg->battery_cycle_total_capacity << " Ah\n";
+        << "  bms_cycle_total_capacity:         "
+        << msg->bms_cycle_total_capacity << " Ah\n";
 
     RCLCPP_INFO(this->get_logger(), "%s", oss.str().c_str());
   }

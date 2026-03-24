@@ -32,7 +32,6 @@ constexpr auto kStepInterval = 5s;
 constexpr auto kServiceWaitInterval = 2s;
 constexpr auto kServiceCallTimeout = 5s;
 
-constexpr std::size_t kTotalSteps = 5;
 
 } // namespace
 
@@ -215,7 +214,7 @@ private:
                     "Previous control step is still running, skip this tick.");
         return;
       }
-      if (step_index_ >= kTotalSteps) {
+      if (step_index_ >= 5) {
         return;
       }
       step_in_progress_ = true;
@@ -225,7 +224,7 @@ private:
     bool ok = false;
     switch (current_step) {
     case 0:
-      ok = execute_volume_step(30, "设为默认音量");
+      ok = execute_volume_step(30, "设30为默认音量");
       break;
     case 1:
       ok = execute_volume_step(40, "音量调小");
@@ -253,7 +252,7 @@ private:
       }
       if (ok) {
         ++step_index_;
-        is_done = step_index_ >= kTotalSteps;
+        is_done = step_index_ >= 5;
       }
     }
 

@@ -13,13 +13,13 @@ class SetMcPresetMotionClient(Node):
         super().__init__('preset_motion_client')
         self.client = self.create_client(
             SetMcPresetMotion, '/aimdk_5Fmsgs/srv/SetMcPresetMotion')
-        self.get_logger().info('✅ SetMcPresetMotion client node created.')
+        self.get_logger().info('SetMcPresetMotion client node created.')
 
         # Wait for the service to become available
         while not self.client.wait_for_service(timeout_sec=2.0):
-            self.get_logger().info('⏳ Service unavailable, waiting...')
+            self.get_logger().info('Service unavailable, waiting...')
 
-        self.get_logger().info('🟢 Service available, ready to send request.')
+        self.get_logger().info('Service available, ready to send request.')
 
     def send_request(self, motion_id: int) -> bool:
         request = SetMcPresetMotion.Request()
@@ -33,19 +33,19 @@ class SetMcPresetMotionClient(Node):
         request.interrupt = True
 
         self.get_logger().info(
-            f'📨 Sending request to set preset motion: motion={motion_id}')
+            f'Sending request to set preset motion: motion={motion_id}')
 
         request.header.stamp = self.get_clock().now().to_msg()
         future = self.client.call_async(request)
         rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
 
         if not future.done():
-            self.get_logger().error('❌ Service call failed or timed out.')
+            self.get_logger().error('Service call failed or timed out.')
             return False
 
         response = future.result()
         if response is None:
-            self.get_logger().error('❌ Service call failed or timed out.')
+            self.get_logger().error('Service call failed or timed out.')
             return False
 
         code = response.response.header.code
@@ -53,20 +53,20 @@ class SetMcPresetMotionClient(Node):
 
         if code != 0:
             self.get_logger().warning(
-                f'❌ Failed to set preset motion: code={code}, state={state}, task_id={response.response.task_id}')
+                f'Failed to set preset motion: code={code}, state={state}, task_id={response.response.task_id}')
             return False
 
         if state == CommonState.SUCCESS:
             self.get_logger().info(
-                f'✅ Preset motion set successfully: {response.response.task_id}')
+                f'Preset motion set successfully: {response.response.task_id}')
             return True
         elif state == CommonState.RUNNING:
             self.get_logger().info(
-                f'⏳ Preset motion executing: {response.response.task_id}')
+                f'Preset motion executing: {response.response.task_id}')
             return True
         else:
             self.get_logger().warning(
-                f'❌ Failed to set preset motion: code={code}, state={state}, task_id={response.response.task_id}')
+                f'Failed to set preset motion: code={code}, state={state}, task_id={response.response.task_id}')
             return False
 
 

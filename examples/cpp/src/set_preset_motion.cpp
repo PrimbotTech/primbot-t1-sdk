@@ -29,17 +29,17 @@ public:
     client_ = this->create_client<aimdk_msgs::srv::SetMcPresetMotion>(
         "/aimdk_5Fmsgs/srv/SetMcPresetMotion");
 
-    RCLCPP_INFO(this->get_logger(), "✅ SetMcPresetMotion client node created.");
+    RCLCPP_INFO(this->get_logger(), "SetMcPresetMotion client node created.");
 
     // Wait for the service to become available
     while (!client_->wait_for_service(std::chrono::seconds(2))) {
       if (!rclcpp::ok()) {
         return;
       }
-      RCLCPP_INFO(this->get_logger(), "⏳ Service unavailable, waiting...");
+      RCLCPP_INFO(this->get_logger(), "Service unavailable, waiting...");
     }
     RCLCPP_INFO(this->get_logger(),
-                "🟢 Service available, ready to send request.");
+                "Service available, ready to send request.");
   }
 
   bool send_request(int motion_id) {
@@ -54,7 +54,7 @@ public:
       request->interrupt = true; // Interrupt current motion
 
       RCLCPP_INFO(this->get_logger(),
-                  "📨 Sending request to set preset motion: motion=%d",
+                  "Sending request to set preset motion: motion=%d",
                   motion_id);
 
       const std::chrono::milliseconds timeout(2000);
@@ -63,7 +63,7 @@ public:
       auto retcode = rclcpp::spin_until_future_complete(shared_from_this(),
                                                         future, timeout);
       if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_ERROR(this->get_logger(), "❌ Service call failed or timed out.");
+        RCLCPP_ERROR(this->get_logger(), "Service call failed or timed out.");
         return false;
       }
 
@@ -73,22 +73,22 @@ public:
 
       if (code != 0) {
         RCLCPP_WARN(this->get_logger(),
-                    "❌ Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
+                    "Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
                     code, state, response->response.task_id);
         return false;
       }
 
       if (state == aimdk_msgs::msg::CommonState::SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "✅ Preset motion set successfully: %lu",
+        RCLCPP_INFO(this->get_logger(), "Preset motion set successfully: %lu",
                     response->response.task_id);
         return true;
       } else if (state == aimdk_msgs::msg::CommonState::RUNNING) {
-        RCLCPP_INFO(this->get_logger(), "⏳ Preset motion executing: %lu",
+        RCLCPP_INFO(this->get_logger(), "Preset motion executing: %lu",
                     response->response.task_id);
         return true;
       } else {
         RCLCPP_WARN(this->get_logger(),
-                    "❌ Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
+                    "Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
                     code, state, response->response.task_id);
         return false;
       }
