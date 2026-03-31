@@ -13,7 +13,7 @@ uint32 timeout_ms
 # response
 
 # 响应头
-CommonResponse reponse
+CommonResponse response
 
 # JPEG 图片数据
 JpegImage jpeg
