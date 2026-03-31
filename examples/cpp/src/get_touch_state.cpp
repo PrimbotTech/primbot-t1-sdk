@@ -20,6 +20,7 @@ private:
   void callback(const aimdk_msgs::msg::TouchState::SharedPtr msg) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(6);
+    // event_type is the primary field of interest.
     oss << "TouchState received\n"
         << "  frame_id: " << msg->header.frame_id << "\n"
         << "  sequence: " << msg->header.sequence << "\n"
@@ -27,6 +28,7 @@ private:
         << "  meas:     " << rclcpp::Time(msg->header.meas_stamp).seconds() << " s\n"
         << "  event:    " << static_cast<int>(msg->event_type);
 
+    // Throttle logs to avoid flooding the console.
     RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 500, "%s",
                          oss.str().c_str());
   }

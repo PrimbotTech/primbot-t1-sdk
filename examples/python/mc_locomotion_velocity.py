@@ -51,6 +51,7 @@ class DirectVelocityControl(Node):
             self.timer = self.create_timer(0.02, self.publish_velocity)
 
     def register_input_source(self) -> bool:
+        # Register the input source before publishing velocity.
         if not self.wait_for_service(
             self.set_client, "/aimdk_5Fmsgs/srv/SetMcInputSource"
         ):
@@ -76,12 +77,22 @@ class DirectVelocityControl(Node):
             self.get_logger().error(f"SetMcInputSource failed: {exc}")
             return False
 
+        ret_code = response.response.header.code
         state = response.response.state.value
-        self.get_logger().info(
-            "Set input source succeeded: "
-            f"state={state}, task_id={response.response.task_id}"
+        task_id = response.response.task_id
+
+        if ret_code == 0:
+            self.get_logger().info(
+                "Set input source succeeded: "
+                f"code={ret_code}, state={state}, task_id={task_id}"
+            )
+            return True
+
+        self.get_logger().warning(
+            "SetMcInputSource returned "
+            f"code={ret_code}, state={state}, task_id={task_id}"
         )
-        return True
+        return False
 
     def get_current_input_source(self) -> bool:
         if not self.wait_for_service(
@@ -127,6 +138,7 @@ class DirectVelocityControl(Node):
         msg = McLocomotionVelocity()
         msg.header = MessageHeader()
         msg.header.stamp = self.get_clock().now().to_msg()
+        # source must match the registered input-source name.
         msg.source = "node"
         msg.forward_velocity = self.forward_velocity
         msg.lateral_velocity = self.lateral_velocity
@@ -183,6 +195,7 @@ def main(args=None):
             node.get_logger().error("Input source registration failed, exiting")
             return 1
 
+        # Input speed must be 0, or have an absolute value at least the minimum threshold.
         try:
             forward = float(input("Enter forward speed 0 or +/- (0.2 ~ 1.0) m/s: "))
             lateral = float(input("Enter lateral speed 0 or +/- (0.2 ~ 1.0) m/s: "))

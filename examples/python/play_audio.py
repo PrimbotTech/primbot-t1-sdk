@@ -1,5 +1,15 @@
 #!/usr/bin/env python3
 
+"""
+ROS parameters:
+  file_name: audio file name.
+  file_path: directory containing the audio file.
+
+Example:
+  python3 examples/python/play_audio.py --ros-args \
+    -p file_name:=demo.wav -p file_path:=/tmp
+"""
+
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
@@ -44,6 +54,7 @@ class PlayAudioFileClient(Node):
             request.request = CommonRequest()
             request.request.header.stamp = self.get_clock().now().to_msg()
 
+            # pkg_name/file_name/file_path locate the audio resource; info describes its format.
             request.file.pkg_name = self.pkg_name
             request.file.file_name = self.file_name
             request.file.file_path = self.file_path
@@ -86,6 +97,7 @@ class PlayAudioFileClient(Node):
 
             code = response.reponse.header.code
             status = response.reponse.status.value
+            # Treat code==0 or status==SUCCESS as success.
             ok = code == 0 or status == CommonState.SUCCESS
 
             if ok:

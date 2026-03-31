@@ -15,7 +15,6 @@ class SetMcPresetMotionClient(Node):
             SetMcPresetMotion, '/aimdk_5Fmsgs/srv/SetMcPresetMotion')
         self.get_logger().info('SetMcPresetMotion client node created.')
 
-        # Wait for the service to become available
         while not self.client.wait_for_service(timeout_sec=2.0):
             self.get_logger().info('Service unavailable, waiting...')
 
@@ -25,10 +24,9 @@ class SetMcPresetMotionClient(Node):
         request = SetMcPresetMotion.Request()
         request.header = RequestHeader()
 
+        # motion.value is the preset motion ID.
         motion = McPresetMotion()
-
         motion.value = motion_id
-
         request.motion = motion
         request.interrupt = True
 
@@ -51,6 +49,7 @@ class SetMcPresetMotionClient(Node):
         code = response.response.header.code
         state = response.response.state.value
 
+        # Treat both SUCCESS and RUNNING as successful requests.
         if code != 0:
             self.get_logger().warning(
                 f'Failed to set preset motion: code={code}, state={state}, task_id={response.response.task_id}')

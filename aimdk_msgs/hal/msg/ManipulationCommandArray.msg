@@ -1,0 +1,3 @@
+MessageHeader header
+
+ManipulationCommand[] manipulations

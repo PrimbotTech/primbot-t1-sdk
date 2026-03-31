@@ -1,0 +1,10 @@
+int16 pos_max
+int16 pos_min
+int16 vel_max
+int16 vel_min
+int16 tor_max
+int16 tor_min
+int16 kp_max
+int16 kp_min
+int16 kd_max
+int16 kd_min

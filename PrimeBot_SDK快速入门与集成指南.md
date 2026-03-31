@@ -219,7 +219,7 @@ source /opt/ros/humble/setup.bash
 source /path/to/your/primebot_sdk/install/setup.bash
 # 2. 模拟发布一个“单次点击”触摸事件 (event_type=1)，每秒发布一次（-r 1）
 ros2 topic pub /aima/hal/touch/state aimdk_msgs/msg/TouchState \
-  "{header: {}, event_type: 1}" -r 1
+  '{header: {}, event_type: 1}' -r 1
 ```
 
 *终端 B（订阅数据）：*
@@ -255,7 +255,7 @@ source /opt/ros/humble/setup.bash
 source /path/to/your/primebot_sdk/install/setup.bash
 # 调用 TTS 服务，让机器人播报一句话
 ros2 service call /aimdk_5Fmsgs/srv/PlayTts aimdk_msgs/srv/PlayTts \
-  "{header: {}, tts_req: {text: '你好，我是启元机器人', priority_level: {value: 6}, domain: 'sdk_test', is_interrupted: true}}"
+  '{header: {}, tts_req: {text: "你好，我是启元机器人", priority_level: {value: 6}, domain: "sdk_test", is_interrupted: true}}'
 ```
 
 *结果验证：*

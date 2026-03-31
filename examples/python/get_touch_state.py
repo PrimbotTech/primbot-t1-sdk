@@ -25,6 +25,7 @@ class TouchStateEcho(Node):
         return float(stamp.sec) + float(stamp.nanosec) / 1_000_000_000.0
 
     def callback(self, msg: TouchState):
+        # event_type is the primary field of interest.
         lines = [
             "TouchState received",
             f"  frame_id: {msg.header.frame_id}",

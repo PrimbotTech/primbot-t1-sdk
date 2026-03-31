@@ -13,7 +13,7 @@
  *   file_name:=demo.wav -p file_path:=/tmp
  *
  *   ros2 run aimdk_examples_cpp play_audio --ros-args -p
- *   file_name:=撒娇.wav -p file_path:=/agibot/software/interaction/bin/cfg
+ *   file_name:=sample.wav -p file_path:=/agibot/software/interaction/bin/cfg
  *
  * Other request fields use built-in defaults and are not configurable from
  * the command line in this demo.
@@ -64,6 +64,7 @@ public:
     request->request = aimdk_msgs::msg::CommonRequest();
     request->request.header.stamp = this->now();
 
+    // pkg_name/file_name/file_path locate the audio resource; info describes its format.
     request->file.pkg_name = pkg_name_;
     request->file.file_name = file_name_;
     request->file.file_path = file_path_;
@@ -101,6 +102,7 @@ public:
     const auto response = future.get();
     const auto code = response->reponse.header.code;
     const auto status = response->reponse.status.value;
+    // Treat code==0 or status==SUCCESS as success.
     const bool ok =
         code == 0 || status == aimdk_msgs::msg::CommonState::SUCCESS;
 

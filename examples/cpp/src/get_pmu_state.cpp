@@ -20,6 +20,7 @@ private:
   void callback(const aimdk_msgs::msg::PmuState::SharedPtr msg) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(3);
+    // Group output by power-supply and battery fields.
     oss << "PmuState received\n";
 
     oss << "  pmu_protocol_version: " << msg->pmu_protocol_version << "\n"

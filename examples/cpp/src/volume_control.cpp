@@ -28,9 +28,9 @@ constexpr char kTtsText[] =
     "如果整段流程能够顺利完成，就说明启元的TTS播放、音量控制和静音控制链路都已经正常工作。"
     "感谢你体验启元机器人Q1的音频控制能力。";
 
-constexpr auto kStepInterval = 5s;
-constexpr auto kServiceWaitInterval = 2s;
-constexpr auto kServiceCallTimeout = 5s;
+constexpr auto kStepInterval = 5s;         // Delay between demo steps
+constexpr auto kServiceWaitInterval = 2s;  // Poll interval while waiting for a service
+constexpr auto kServiceCallTimeout = 5s;   // Timeout for a single service request
 
 
 } // namespace
@@ -166,11 +166,11 @@ private:
     auto request = std::make_shared<aimdk_msgs::srv::PlayTts::Request>();
     request->header = aimdk_msgs::msg::CommonRequest();
     request->header.header.stamp = this->now();
+    // domain and trace_id identify this TTS request.
     request->tts_req.text = kTtsText;
     request->tts_req.domain = tts_domain_;
     request->tts_req.trace_id = tts_trace_id_;
     request->tts_req.is_interrupted = true;
-    request->tts_req.priority_weight = 0;
     request->tts_req.priority_level.value =
         aimdk_msgs::msg::TtsPriorityLevel::INTERACTION_L6;
 
@@ -276,6 +276,7 @@ private:
                 "Running volume step. target=%u action=%s",
                 target_volume, action_message);
 
+    // Call GetVolume after SetVolume to verify the result.
     auto set_request = std::make_shared<aimdk_msgs::srv::SetVolume::Request>();
     set_request->request = aimdk_msgs::msg::CommonRequest();
     set_request->request.header.stamp = this->now();
@@ -325,6 +326,7 @@ private:
     RCLCPP_INFO(this->get_logger(), "Running mute step. target=%d action=%s",
                 static_cast<int>(target_mute), action_message);
 
+    // Call GetMute after SetMute to verify the result.
     auto set_request = std::make_shared<aimdk_msgs::srv::SetMute::Request>();
     set_request->request = aimdk_msgs::msg::CommonRequest();
     set_request->request.header.stamp = this->now();

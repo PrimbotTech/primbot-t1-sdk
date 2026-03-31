@@ -25,6 +25,7 @@ class PmuStateEcho(Node):
         return f"{float(value):.3f}"
 
     def callback(self, msg: PmuState):
+        # Group output by power-supply and battery fields.
         lines = [
             "PmuState received",
             f"  pmu_protocol_version: {msg.pmu_protocol_version}",

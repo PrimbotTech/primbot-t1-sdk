@@ -31,7 +31,6 @@ public:
 
     RCLCPP_INFO(this->get_logger(), "SetMcPresetMotion client node created.");
 
-    // Wait for the service to become available
     while (!client_->wait_for_service(std::chrono::seconds(2))) {
       if (!rclcpp::ok()) {
         return;
@@ -48,10 +47,11 @@ public:
           std::make_shared<aimdk_msgs::srv::SetMcPresetMotion::Request>();
       request->header = aimdk_msgs::msg::RequestHeader();
 
+      // motion.value is the preset motion ID.
       aimdk_msgs::msg::McPresetMotion motion;
-      motion.value = motion_id; // Preset motion ID
+      motion.value = motion_id;
       request->motion = motion;
-      request->interrupt = true; // Interrupt current motion
+      request->interrupt = true;
 
       RCLCPP_INFO(this->get_logger(),
                   "Sending request to set preset motion: motion=%d",
@@ -71,6 +71,7 @@ public:
       auto code = response->response.header.code;
       auto state = response->response.state.value;
 
+      // Treat both SUCCESS and RUNNING as successful requests.
       if (code != 0) {
         RCLCPP_WARN(this->get_logger(),
                     "Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
@@ -112,9 +113,8 @@ int main(int argc, char *argv[]) {
     auto client = std::dynamic_pointer_cast<PresetMotionClient>(g_node);
 
     int motion = 1003;
-    std::cout // TODO: Change input validation for motion ID
-        << "Enter preset motion ID (1001-raise, 1002-wave, 1003-handshake, "
-           "1004-airkiss): ";
+    std::cout
+        << "Enter preset motion ID(default: 1003): ";
     std::cin >> motion;
     if (client) {
       client->send_request(motion);

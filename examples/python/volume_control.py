@@ -22,9 +22,9 @@ SERVICE_WAIT_SEC = 2.0
 SERVICE_CALL_TIMEOUT_SEC = 5.0
 
 
-class AudioControlClient(Node):
+class VolumeControlClient(Node):
     def __init__(self):
-        super().__init__("audio_control_client")
+        super().__init__("volume_control_client")
         self.play_tts_service = "/aimdk_5Fmsgs/srv/PlayTts"
         self.set_volume_service = "/aimdk_5Fmsgs/srv/SetVolume"
         self.get_volume_service = "/aimdk_5Fmsgs/srv/GetVolume"
@@ -43,7 +43,7 @@ class AudioControlClient(Node):
         self.set_mute_client = self.create_client(SetMute, self.set_mute_service)
         self.get_mute_client = self.create_client(GetMute, self.get_mute_service)
 
-        self.get_logger().info("Audio control demo node created.")
+        self.get_logger().info("Volume control demo node created.")
 
     def wait_for_services(self) -> bool:
         return (
@@ -99,6 +99,7 @@ class AudioControlClient(Node):
     def play_tts(self) -> bool:
         request = PlayTts.Request()
         request.header = self._build_common_request()
+        # domain and trace_id identify this TTS request.
         request.tts_req.text = TTS_TEXT
         request.tts_req.domain = self.tts_domain
         request.tts_req.trace_id = self.tts_trace_id
@@ -133,6 +134,7 @@ class AudioControlClient(Node):
             f"Running volume step. target={target_volume} action={action_message}"
         )
 
+        # Call GetVolume after SetVolume to verify the result.
         set_request = SetVolume.Request()
         set_request.request = self._build_common_request()
         set_request.audio_volume = target_volume
@@ -183,6 +185,7 @@ class AudioControlClient(Node):
             f"Running mute step. target={int(target_mute)} action={action_message}"
         )
 
+        # Call GetMute after SetMute to verify the result.
         set_request = SetMute.Request()
         set_request.request = self._build_common_request()
         set_request.is_mute = target_mute
@@ -265,14 +268,14 @@ def main(args=None):
     rclpy.init(args=args)
     node = None
     try:
-        node = AudioControlClient()
+        node = VolumeControlClient()
         if not node.wait_for_services():
-            node.get_logger().error("Failed to initialize audio control demo.")
+            node.get_logger().error("Failed to initialize volume control demo.")
             return 1
         ok = node.run_demo()
         return 0 if ok else 1
     except Exception as error:  # noqa: BLE001
-        rclpy.logging.get_logger("audio_control_main").error(
+        rclpy.logging.get_logger("volume_control_main").error(
             f"Program exited with exception: {error}"
         )
         return 1
