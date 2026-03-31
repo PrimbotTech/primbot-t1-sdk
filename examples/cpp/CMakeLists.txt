@@ -8,11 +8,8 @@ find_package(OpenCV REQUIRED COMPONENTS core videoio)
 find_package(ruckig REQUIRED)
 
 set(EXAMPLE_TARGETS
-  audio_control
-  demo
   get_audio_stream
   get_jpg
-  get_joint_state
   get_pmu_state
   get_touch_state
   get_video_stream
@@ -23,6 +20,7 @@ set(EXAMPLE_TARGETS
   play_lights
   set_mc_action
   set_preset_motion
+  volume_control
 )
 
 foreach(EXAMPLE_TARGET ${EXAMPLE_TARGETS})
