@@ -109,3 +109,21 @@ int32 BIPED_LOCOMOTION_BACKBEND = 205
 
 # 双足全身控制模式
 int32 BIPED_LOCOMOTION_WBC = 300
+
+# ============================================================================
+# Q 系列Action
+# ============================================================================
+
+# 折叠收储
+int32 STORE_DEFAULT = 1001
+
+# 走跑
+int32 BIPED_WALK_RUN = 1002
+
+# 模仿动作
+int32 MIMIC = 1003
+
+# 模仿动作-灵创
+int32 MIMIC_LINKCRAFT = 1004
+
+int32 BIPED_WHOLE_BODY_CTRL = 1005
