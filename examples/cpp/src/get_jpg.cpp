@@ -177,12 +177,12 @@ private:
   }
 
   bool save_response(const aimdk_msgs::srv::CaptureJpegImage::Response &response) {
-    const auto code = response.reponse.header.code;
-    const auto status = response.reponse.status.value;
+    const auto code = response.response.header.code;
+    const auto status = response.response.status.value;
     if (code != 0 && status != aimdk_msgs::msg::CommonState::SUCCESS) {
       RCLCPP_ERROR(this->get_logger(),
                    "CaptureJpegImage failed. code=%ld status=%d msg=%s", code,
-                   status, response.reponse.message.c_str());
+                   status, response.response.message.c_str());
       return false;
     }
 
