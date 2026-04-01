@@ -8,19 +8,17 @@
 
 ```
 primebot_sdk/
-├── README.md                 # 本文件
+├── README.md                          # 本文件
 ├── PrimeBot_SDK快速入门与集成指南.md     # 详细开发集成手册（必读）
-├── aimdk_msgs/               # 接口消息包（ROS2 msg/srv 定义）
-│   ├── common/               # 基础公共定义
-│   ├── face_ui/              # 面部表情 UI 接口
-│   ├── hal/                  # 硬件抽象层（关节/音频/灯带/触摸/PMU）
-│   ├── interaction/          # 交互层（表情播放/TTS）
-│   └── mc/                   # 运控层（动作/运动控制）
-└── examples/
-    ├── cpp/                  # C++ 示例代码
-    │   └── src/demo.cpp
-    └── python/               # Python 示例代码
-        └── demo.py
+├── 接口说明.md                         # 全量 Service/Topic 接口定义与参数手册
+├── aimdk_msgs/                        # 接口消息包 (ROS2 msg/srv 定义)
+│   ├── common/                        # 任务响应与基础类型定义
+│   ├── hal/                           # 硬件抽象层 (关节/音频/灯带/触摸)
+│   ├── interaction/                   # 交互层 (表情播放/TTS)
+│   └── mc/                            # 运控层 (动作/轨迹控制)
+└── examples/                          # 场景化例程
+    ├── cpp/                           # C++ 示例
+    └── python/                        # Python 示例
 ```
 
 ---
