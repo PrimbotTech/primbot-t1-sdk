@@ -15,7 +15,7 @@ bool is_mute
 # response
 
 # 响应头
-CommonResponse reponse
+CommonResponse response
 
 # 当前静音状态
 bool is_mute

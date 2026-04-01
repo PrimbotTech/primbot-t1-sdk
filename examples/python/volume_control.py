@@ -147,8 +147,8 @@ class VolumeControlClient(Node):
 
         self.get_logger().info(
             "SetVolume response: "
-            f"code={set_response.reponse.header.code} "
-            f"status={set_response.reponse.status.value} "
+            f"code={set_response.response.header.code} "
+            f"status={set_response.response.status.value} "
             f"audio_volume={set_response.audio_volume}"
         )
 
@@ -163,8 +163,8 @@ class VolumeControlClient(Node):
 
         self.get_logger().info(
             "GetVolume response: "
-            f"code={get_response.reponse.header.code} "
-            f"status={get_response.reponse.status.value} "
+            f"code={get_response.response.header.code} "
+            f"status={get_response.response.status.value} "
             f"audio_volume={get_response.audio_volume}"
         )
 
@@ -198,8 +198,8 @@ class VolumeControlClient(Node):
 
         self.get_logger().info(
             "SetMute response: "
-            f"code={set_response.reponse.header.code} "
-            f"status={set_response.reponse.status.value} "
+            f"code={set_response.response.header.code} "
+            f"status={set_response.response.status.value} "
             f"is_mute={int(set_response.is_mute)} "
             "(final result is verified by GetMute)"
         )
@@ -213,8 +213,8 @@ class VolumeControlClient(Node):
 
         self.get_logger().info(
             "GetMute response: "
-            f"code={get_response.reponse.header.code} "
-            f"status={get_response.reponse.status.value} "
+            f"code={get_response.response.header.code} "
+            f"status={get_response.response.status.value} "
             f"is_mute={int(get_response.is_mute)}"
         )
 

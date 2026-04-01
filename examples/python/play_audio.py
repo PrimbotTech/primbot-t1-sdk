@@ -95,21 +95,21 @@ class PlayAudioFileClient(Node):
                 self.get_logger().error("PlayAudioFile call failed or timed out.")
                 return False
 
-            code = response.reponse.header.code
-            status = response.reponse.status.value
+            code = response.response.header.code
+            status = response.response.status.value
             # Treat code==0 or status==SUCCESS as success.
             ok = code == 0 or status == CommonState.SUCCESS
 
             if ok:
                 self.get_logger().info(
                     "PlayAudioFile accepted. "
-                    f"code={code} status={status} msg={response.reponse.message}"
+                    f"code={code} status={status} msg={response.response.message}"
                 )
                 return True
 
             self.get_logger().error(
                 "PlayAudioFile rejected. "
-                f"code={code} status={status} msg={response.reponse.message}"
+                f"code={code} status={status} msg={response.response.message}"
             )
             return False
         except Exception as error:  # noqa: BLE001

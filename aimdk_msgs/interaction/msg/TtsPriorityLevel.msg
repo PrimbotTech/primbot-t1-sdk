@@ -14,6 +14,9 @@ uint8  MISSION_L4 = 0x04
 # 交互相应层
 uint8  INTERACTION_L6 = 0x06        
 
+# 系统提示层
+uint8  SYSTEM_L7 = 0x07
+
  # 危险预警层
 uint8  WARNING_L8 = 0x08         
 

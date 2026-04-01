@@ -117,12 +117,12 @@ class CaptureJpegClient(Node):
         return self.save_response(response)
 
     def save_response(self, response: CaptureJpegImage.Response) -> bool:
-        code = response.reponse.header.code
-        status = response.reponse.status.value
+        code = response.response.header.code
+        status = response.response.status.value
         if code != 0 and status != CommonState.SUCCESS:
             self.get_logger().error(
                 "CaptureJpegImage failed. "
-                f"code={code} status={status} msg={response.reponse.message}"
+                f"code={code} status={status} msg={response.response.message}"
             )
             return False
 

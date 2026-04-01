@@ -7,6 +7,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
+find_package(builtin_interfaces REQUIRED)
 
 # 收集所有 msg / srv / action 文件
 file(GLOB_RECURSE msg_files    "*.msg")
@@ -22,7 +23,7 @@ endforeach()
 rosidl_generate_interfaces(
   ${PROJECT_NAME}
   ${interface_files}
-  DEPENDENCIES std_msgs geometry_msgs sensor_msgs nav_msgs
+  DEPENDENCIES std_msgs geometry_msgs sensor_msgs nav_msgs builtin_interfaces
 )
 
 ament_export_dependencies(rosidl_default_runtime)

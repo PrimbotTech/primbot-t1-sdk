@@ -290,8 +290,8 @@ private:
 
     RCLCPP_INFO(this->get_logger(),
                 "SetVolume response: code=%ld status=%d audio_volume=%u",
-                set_response->reponse.header.code,
-                set_response->reponse.status.value,
+                set_response->response.header.code,
+                set_response->response.status.value,
                 set_response->audio_volume);
 
     auto get_request = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
@@ -306,8 +306,8 @@ private:
 
     RCLCPP_INFO(this->get_logger(),
                 "GetVolume response: code=%ld status=%d audio_volume=%u",
-                get_response->reponse.header.code,
-                get_response->reponse.status.value,
+                get_response->response.header.code,
+                get_response->response.status.value,
                 get_response->audio_volume);
 
     if (get_response->audio_volume != target_volume) {
@@ -342,8 +342,8 @@ private:
         this->get_logger(),
         "SetMute response: code=%ld status=%d is_mute=%d "
         "(final result is verified by GetMute)",
-        set_response->reponse.header.code,
-        set_response->reponse.status.value,
+        set_response->response.header.code,
+        set_response->response.status.value,
         static_cast<int>(set_response->is_mute));
 
     auto get_request = std::make_shared<aimdk_msgs::srv::GetMute::Request>();
@@ -358,8 +358,8 @@ private:
 
     RCLCPP_INFO(this->get_logger(),
                 "GetMute response: code=%ld status=%d is_mute=%d",
-                get_response->reponse.header.code,
-                get_response->reponse.status.value,
+                get_response->response.header.code,
+                get_response->response.status.value,
                 static_cast<int>(get_response->is_mute));
 
     if (get_response->is_mute != target_mute) {

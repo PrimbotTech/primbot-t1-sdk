@@ -100,8 +100,8 @@ public:
     }
 
     const auto response = future.get();
-    const auto code = response->reponse.header.code;
-    const auto status = response->reponse.status.value;
+    const auto code = response->response.header.code;
+    const auto status = response->response.status.value;
     // Treat code==0 or status==SUCCESS as success.
     const bool ok =
         code == 0 || status == aimdk_msgs::msg::CommonState::SUCCESS;
@@ -109,13 +109,13 @@ public:
     if (ok) {
       RCLCPP_INFO(this->get_logger(),
                   "PlayAudioFile accepted. code=%ld status=%d msg=%s", code,
-                  status, response->reponse.message.c_str());
+                  status, response->response.message.c_str());
       return true;
     }
 
     RCLCPP_ERROR(this->get_logger(), "PlayAudioFile rejected. code=%ld status=%d "
                                      "msg=%s",
-                 code, status, response->reponse.message.c_str());
+                 code, status, response->response.message.c_str());
     return false;
   }
 
