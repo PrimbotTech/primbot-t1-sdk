@@ -13,9 +13,9 @@ primebot_sdk/
 ├── 接口说明.md                         # 全量 Service/Topic 接口定义与参数手册
 ├── aimdk_msgs/                        # 接口消息包 (ROS2 msg/srv 定义)
 │   ├── common/                        # 任务响应与基础类型定义
-│   ├── hal/                           # 硬件抽象层 (关节/音频/灯带/触摸)
+│   ├── hal/                           # 硬件抽象层 (音频/灯带/触摸)
 │   ├── interaction/                   # 交互层 (表情播放/TTS)
-│   └── mc/                            # 运控层 (动作/轨迹控制)
+│   └── mc/                            # 运控层 (动作/轨迹控制/关节)
 └── examples/                          # 场景化例程
     ├── cpp/                           # C++ 示例
     └── python/                        # Python 示例

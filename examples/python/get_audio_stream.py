@@ -81,8 +81,7 @@ class AudioStreamSubscriber(Node):
 
         if self.capture_seconds > 0:
             self.get_logger().info(
-                "The node will stop %d second(s) after the first packet.",
-                self.capture_seconds,
+                f"The node will stop {self.capture_seconds} second(s) after the first packet."
             )
         else:
             self.get_logger().info("Auto stop disabled. Press Ctrl+C to exit.")
@@ -98,21 +97,11 @@ class AudioStreamSubscriber(Node):
 
     def _log_first_packet(self, msg: AudioCapture, payload_bytes: int) -> None:
         self.get_logger().info(
-            "First packet received: stamp=%d.%09d mic_channels=%d ref_channels=%d "
-            "total_channels=%d sample_rate=%d sample_format=%s coding_format=%s "
-            "mic_source=%d payload_bytes=%d"
-            % (
-                msg.stamps.sec,
-                msg.stamps.nanosec,
-                msg.mic_channels,
-                msg.ref_channels,
-                msg.info.channels,
-                msg.info.sample_rate,
-                msg.info.sample_format,
-                msg.info.coding_format,
-                msg.mic_source,
-                payload_bytes,
-            )
+            f"First packet received: stamp={msg.stamps.sec}.{msg.stamps.nanosec:09d} "
+            f"mic_channels={msg.mic_channels} ref_channels={msg.ref_channels} "
+            f"total_channels={msg.info.channels} sample_rate={msg.info.sample_rate} "
+            f"sample_format={msg.info.sample_format} coding_format={msg.info.coding_format} "
+            f"mic_source={msg.mic_source} payload_bytes={payload_bytes}"
         )
 
     def on_audio_capture(self, msg: AudioCapture) -> None:
@@ -137,9 +126,8 @@ class AudioStreamSubscriber(Node):
         ):
             self.size_mismatch_logged = True
             self.get_logger().warn(
-                "AudioInfo.size=%d but actual payload is %d bytes. "
+                f"AudioInfo.size={msg.info.size} but actual payload is {payload_bytes} bytes. "
                 "The example will use len(msg.data.data)."
-                % (msg.info.size, payload_bytes)
             )
 
         if self.file_enabled and self.output_stream is not None and payload_bytes > 0:
@@ -158,8 +146,7 @@ class AudioStreamSubscriber(Node):
             and self.message_count % self.log_every_n_messages == 0
         ):
             self.get_logger().info(
-                "Received %d packets, total_bytes=%d, latest_payload=%d"
-                % (self.message_count, self.total_bytes, payload_bytes)
+                f"Received {self.message_count} packets, total_bytes={self.total_bytes}, latest_payload={payload_bytes}"
             )
 
     def check_auto_stop(self) -> None:
@@ -191,17 +178,9 @@ class AudioStreamSubscriber(Node):
 
         elapsed_ms = int((time.monotonic() - self.first_packet_monotonic) * 1000)
         self.get_logger().info(
-            "Audio stream summary: packets=%d total_bytes=%d elapsed=%d ms "
-            "sample_rate=%d total_channels=%d sample_format=%s coding_format=%s"
-            % (
-                self.message_count,
-                self.total_bytes,
-                elapsed_ms,
-                self.last_sample_rate,
-                self.last_total_channels,
-                self.last_sample_format,
-                self.last_coding_format,
-            )
+            f"Audio stream summary: packets={self.message_count} total_bytes={self.total_bytes} elapsed={elapsed_ms} ms "
+            f"sample_rate={self.last_sample_rate} total_channels={self.last_total_channels} "
+            f"sample_format={self.last_sample_format} coding_format={self.last_coding_format}"
         )
 
         if self.file_enabled or self.output_file:
