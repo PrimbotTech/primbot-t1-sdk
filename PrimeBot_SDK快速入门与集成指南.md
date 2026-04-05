@@ -195,8 +195,9 @@ ros2 service list
 | :--- | :--- | :--- | :--- |
 | **公共 (必选)** | **ROSIDL** | 生成并编译自定义 `aimdk_msgs` (支持 C++/Python) | APT |
 | | **Colcon** | ROS 2 包的统一构建入口 (`colcon build`) | APT |
+| | **Python3-Dev** | 提供 C 扩展编译所需的 Python 开发头文件 | APT |
 | **C++ 专用** | **OpenCV** | 支撑 `/aima/hal/video/stream` 流接收及图像处理开发 | APT |
-| | **YAML-CPP** | 用于解析机器人本体及算法相关的 YAML 配置文件 | APT |
+| | **YAML-CPP** | 用于解析机器人本地或自定义的 YAML 配置文件 (可选) | APT |
 | | **FFmpeg** | 支撑原始 PCM/RTSP 音频视频流的录制与调试 | APT |
 | **Python 专用** | **NumPy** | 支撑 Python 图像处理及音频流的高效矩阵运算 | Pip |
 | | **OpenCV-Python** | 支撑 Python 视频流读取脚本 (`get_video_stream.py`) | Pip |
@@ -212,6 +213,7 @@ ros2 service list
 ```bash
 sudo apt update && sudo apt install -y \
     python3-colcon-common-extensions \
+    python3-dev \
     ros-humble-rosidl-default-generators \
     ros-humble-rosidl-default-runtime
 ```
