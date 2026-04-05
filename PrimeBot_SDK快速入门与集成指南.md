@@ -11,6 +11,7 @@
         - [2.1.2 系统环境](#212-系统环境)
         - [2.1.3 通讯环境](#213-通讯环境)
         - [2.1.4 用户可操作目录](#214-用户可操作目录)
+        - [2.1.5 三方库与编译依赖](#215-三方库与编译依赖)
     - [2.2 安装与编译](#22-安装与编译)
         - [2.2.1 编译操作](#221-编译操作)
         - [2.2.2 命令行交互验证](#222-命令行交互验证)
@@ -168,6 +169,7 @@ ros2 service list
 >
 > **提示**：虽然此时您可以查看到所有的通道，但因为没有编译 SDK，您将无法使用 `ros2 topic echo` 实际查看需要自定义消息类型（如 `aimdk_msgs`）的数据内容。
 
+
 #### 2.1.4 用户可操作目录
 
 为方便开发者在机器人上进行二次开发和数据存储，系统预留了以下可读写的目录空间：
@@ -182,6 +184,52 @@ ros2 service list
 - `/home/run` 目录：作为运行时工作目录，适合存放程序运行产生的日志、缓存、配置输出等临时数据。建议用于开发调试阶段的数据持久化。
 
 > **注意**：请勿在系统其他目录（如 `/usr`、`/etc` 等）进行随意写入操作，以免影响系统稳定性或导致服务异常。
+
+#### 2.1.5 三方库与编译依赖
+
+为满足不同语言开发者的需求，环境依赖分为以下三个部分。由于 SDK 包含自定义消息编译及运动算法绑定，**建议完整安装**。
+
+**1. 核心依赖说明**
+
+| 依赖分类 | 库/工具名称 | 使用场景 | 安装类型 |
+| :--- | :--- | :--- | :--- |
+| **公共 (必选)** | **ROSIDL** | 生成并编译自定义 `aimdk_msgs` (支持 C++/Python) | APT |
+| | **Colcon** | ROS 2 包的统一构建入口 (`colcon build`) | APT |
+| **C++ 专用** | **OpenCV** | 支撑 `/aima/hal/video/stream` 流接收及图像处理开发 | APT |
+| | **YAML-CPP** | 用于解析机器人本体及算法相关的 YAML 配置文件 | APT |
+| | **FFmpeg** | 支撑原始 PCM/RTSP 音频视频流的录制与调试 | APT |
+| **Python 专用** | **NumPy** | 支撑 Python 图像处理及音频流的高效矩阵运算 | Pip |
+| | **OpenCV-Python** | 支撑 Python 视频流读取脚本 (`get_video_stream.py`) | Pip |
+| | **Nanobind** | 提供 C++ 与 Python 之间极高性能、轻量级的类型映射绑定支持 | Pip |
+| | **Scikit-build-core** | 现代 CMake 驱动构建后台，负责 SDK 内部二进制扩展模块的编译 | Pip |
+
+**2. 安装脚本**
+
+请根据您的开发需求，按顺序执行以下安装步骤：
+
+**A. 基础公共依赖 (必选)**
+无论使用何种语言，若要编译 SDK 消息协议及使用 `colcon` 构建工具，必须执行：
+```bash
+sudo apt update && sudo apt install -y \
+    python3-colcon-common-extensions \
+    ros-humble-rosidl-default-generators \
+    ros-humble-rosidl-default-runtime
+```
+
+**B. C++ 专用开发环境 (推荐 C++ 开发者安装)**
+如果您需要编译 C++ 示例程序或进行原生媒体流开发：
+```bash
+sudo apt install -y \
+    libopencv-dev \
+    libyaml-cpp-dev \
+    ffmpeg
+```
+
+**C. Python 专用开发环境 (针对 Python 示例运行与算法模块构建)**
+如果您需要运行 Python 示例脚本（如视频、音频处理）或编译 SDK 内置的 Ruckig 算法 Python 模块：
+```bash
+pip3 install numpy opencv-python nanobind scikit-build-core
+```
 ---
 ### 2.2 安装与编译
 #### 2.2.1 编译操作
