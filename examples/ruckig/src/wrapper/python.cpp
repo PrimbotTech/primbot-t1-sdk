@@ -17,7 +17,7 @@ using namespace nb::literals; // to bring in the `_a` literal
 using namespace ruckig;
 
 
-NB_MODULE(ruckig, m) {
+NB_MODULE(ruckig_for_primebot, m) {
     m.doc() = "Instantaneous Motion Generation for Robots and Machines. Real-time and time-optimal trajectory calculation \
 given a target waypoint with position, velocity, and acceleration, starting from any initial state \
 limited by velocity, acceleration, and jerk constraints.";

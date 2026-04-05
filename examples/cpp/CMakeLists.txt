@@ -5,7 +5,7 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(aimdk_msgs REQUIRED)
 find_package(OpenCV REQUIRED COMPONENTS core videoio)
-find_package(ruckig REQUIRED)
+find_package(ruckig_for_primebot REQUIRED)
 
 set(EXAMPLE_TARGETS
   get_audio_stream
@@ -36,7 +36,7 @@ foreach(EXAMPLE_TARGET ${EXAMPLE_TARGETS})
     target_link_libraries(${EXAMPLE_TARGET} ${OpenCV_LIBS})
   endif()
   if(EXAMPLE_TARGET STREQUAL "joint_control")
-    target_link_libraries(${EXAMPLE_TARGET} ruckig::ruckig)
+    target_link_libraries(${EXAMPLE_TARGET} ruckig_for_primebot::ruckig_for_primebot)
   endif()
 endforeach()
 

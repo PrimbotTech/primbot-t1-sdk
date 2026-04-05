@@ -45,7 +45,7 @@ from rclpy.parameter import Parameter
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
 from aimdk_msgs.msg import JointCommand, JointCommandArray, JointStateArray
-from ruckig import InputParameter, OutputParameter, Result, Ruckig
+from ruckig_for_primebot import InputParameter, OutputParameter, Result, Ruckig
 
 
 g_node: Optional["JointControlNode"] = None

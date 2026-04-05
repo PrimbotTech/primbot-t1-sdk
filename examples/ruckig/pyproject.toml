@@ -1,5 +1,5 @@
 [project]
-name = "ruckig"
+name = "ruckig_for_primebot"
 version = "0.15.5"
 authors = [
   {name = "Lars Berscheid", email = "lars.berscheid@ruckig.com"},

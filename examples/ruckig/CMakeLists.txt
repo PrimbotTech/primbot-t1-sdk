@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.15)
 
 
-project(ruckig VERSION 0.15.5 LANGUAGES CXX)
+project(ruckig_for_primebot VERSION 0.15.5 LANGUAGES CXX)
 
 
 include(GNUInstallDirs)
@@ -19,7 +19,7 @@ if(WIN32 AND BUILD_SHARED_LIBS)
 endif()
 
 
-add_library(ruckig
+add_library(ruckig_for_primebot
   src/ruckig/brake.cpp
   src/ruckig/position_first_step1.cpp
   src/ruckig/position_first_step2.cpp
@@ -33,34 +33,34 @@ add_library(ruckig
   src/ruckig/velocity_third_step2.cpp
 )
 
-target_compile_features(ruckig PUBLIC cxx_std_17)
-target_include_directories(ruckig PUBLIC
+target_compile_features(ruckig_for_primebot PUBLIC cxx_std_17)
+target_include_directories(ruckig_for_primebot PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
   $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}>
 )
-target_link_libraries(ruckig PUBLIC)
+target_link_libraries(ruckig_for_primebot PUBLIC)
 
 if(MSVC)
-  target_compile_definitions(ruckig PUBLIC _USE_MATH_DEFINES)
+  target_compile_definitions(ruckig_for_primebot PUBLIC _USE_MATH_DEFINES)
 endif()
 
 if(BUILD_CLOUD_CLIENT)
-  target_sources(ruckig PRIVATE src/ruckig/cloud_client.cpp)
-  target_include_directories(ruckig PUBLIC
+  target_sources(ruckig_for_primebot PRIVATE src/ruckig/cloud_client.cpp)
+  target_include_directories(ruckig_for_primebot PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party>
-    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ruckig/third_party>
+    $<INSTALL_INTERFACE:${CMAKE_INSTALL_INCLUDEDIR}/ruckig_for_primebot/third_party>
   )
-  target_compile_definitions(ruckig PUBLIC WITH_CLOUD_CLIENT)
+  target_compile_definitions(ruckig_for_primebot PUBLIC WITH_CLOUD_CLIENT)
 endif()
 
-add_library(ruckig::ruckig ALIAS ruckig)
+add_library(ruckig_for_primebot::ruckig_for_primebot ALIAS ruckig_for_primebot)
 
 
 if(BUILD_TESTS)
   enable_testing()
 
   add_library(test-dependencies INTERFACE)
-  target_link_libraries(test-dependencies INTERFACE ruckig)
+  target_link_libraries(test-dependencies INTERFACE ruckig_for_primebot)
   target_include_directories(test-dependencies INTERFACE third_party)
   if(MSVC)
     target_compile_options(test-dependencies INTERFACE /W4)
@@ -83,7 +83,7 @@ endif()
 if(BUILD_BENCHMARK)
   add_executable(benchmark-target test/benchmark_target.cpp)
 
-  target_link_libraries(benchmark-target PRIVATE ruckig)
+  target_link_libraries(benchmark-target PRIVATE ruckig_for_primebot)
 endif()
 
 
@@ -99,7 +99,7 @@ if(BUILD_EXAMPLES)
 
   foreach(example IN LISTS EXAMPLES_LIST)
     add_executable(example-${example} examples/${example}.cpp)
-    target_link_libraries(example-${example} PRIVATE ruckig)
+    target_link_libraries(example-${example} PRIVATE ruckig_for_primebot)
   endforeach()
 endif()
 
@@ -113,12 +113,12 @@ if(BUILD_PYTHON_MODULE)
 
   nanobind_add_module(python_ruckig NB_STATIC src/wrapper/python.cpp)
   target_compile_features(python_ruckig PUBLIC cxx_std_17)
-  target_link_libraries(python_ruckig PUBLIC ruckig)
+  target_link_libraries(python_ruckig PUBLIC ruckig_for_primebot)
   if(BUILD_CLOUD_CLIENT)
     target_compile_definitions(python_ruckig PUBLIC WITH_CLOUD_CLIENT)
   endif()
 
-  set_target_properties(python_ruckig PROPERTIES OUTPUT_NAME ruckig)
+  set_target_properties(python_ruckig PROPERTIES OUTPUT_NAME ruckig_for_primebot)
   set_target_properties(python_ruckig PROPERTIES ARCHIVE_OUTPUT_NAME python_ruckig)
 
   install(TARGETS python_ruckig LIBRARY DESTINATION .)
@@ -135,7 +135,7 @@ if(BUILD_CLOUD_CLIENT)
 endif()
 
 # Install library
-install(TARGETS ruckig
+install(TARGETS ruckig_for_primebot
   EXPORT ${PROJECT_NAME}-targets
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
   LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
