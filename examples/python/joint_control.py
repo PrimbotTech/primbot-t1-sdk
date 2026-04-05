@@ -6,6 +6,9 @@ Example joint position controller for /aima/hal/joint/command.
 Before running the following command, place the robot flat on the ground.
 The following example lifts the left arm and right leg.
 
+Prerequisites:
+  1. Build the SDK: `colcon build` (this automatically deploys the required .so library).
+  2. Source environment: `source install/setup.bash`.
 
 Example:
   python3 examples/python/joint_control.py --ros-args \
