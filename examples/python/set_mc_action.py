@@ -26,7 +26,7 @@ import rclpy
 import rclpy.logging
 from rclpy.node import Node
 
-from aimdk_msgs.msg import CommonRequest, CommonState, McAction, McActionCommand, McActionStatus, RequestHeader, McMotionType
+from aimdk_msgs.msg import CommonRequest, CommonState, McAction, McActionCommand, McActionStatus, RequestHeader
 from aimdk_msgs.srv import GetMcAction, SetMcAction, SetMcMotion
 
 
@@ -188,8 +188,8 @@ class SetMcActionClient(Node):
                 request = SetMcMotion.Request()
                 request.header = RequestHeader()
                 request.header.stamp = self.get_clock().now().to_msg()
-                request.motion.tag = motion_name
-                request.motion.type.value = McMotionType.MIMIC
+                request.motion = motion_name
+                request.type = SetMcMotion.Request.MIMIC_QY
                 request.interrupt = interrupt
 
                 self.get_logger().info(
@@ -219,16 +219,16 @@ class SetMcActionClient(Node):
                     continue
 
                 code = response.response.header.code
-                status = response.response.status.value
+                state = response.response.state.value
                 task_id = response.response.task_id
 
-                if code == 0 and status in (
+                if code == 0 and state in (
                     CommonState.SUCCESS,
                     CommonState.RUNNING,
                 ):
                     self.get_logger().info(
                         'SetMcMotion request accepted by service: '
-                        f'code={code} status={status} task_id={task_id}'
+                        f'code={code} state={state} task_id={task_id}'
                     )
                     return True
 

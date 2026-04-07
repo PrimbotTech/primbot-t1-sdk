@@ -111,7 +111,7 @@ echo $ROS_DISTRO
 - **正常输出**：
   `humble`
 
-若版本不匹配或未安装，请参考官方 [安装指南](https://docs.ros.org/en/humble/Installation.html) 完成安装。
+若版本不匹配或未安装，请参考官方 [安装指南](https://docs.ros.org/en/humble/Installation.html) 或参考[鱼香ROS安装指南](https://fishros.github.io/install/)完成安装。
 
 建议将 ROS2 环境加载写入 `~/.bashrc` 以永久生效：
 ```bash

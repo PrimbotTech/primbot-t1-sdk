@@ -21,7 +21,6 @@
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
 #include "aimdk_msgs/msg/mc_action_status.hpp"
-#include "aimdk_msgs/msg/mc_motion_type.hpp"
 #include "aimdk_msgs/srv/get_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_motion.hpp"
@@ -194,8 +193,8 @@ private:
         auto request =
             std::make_shared<aimdk_msgs::srv::SetMcMotion::Request>();
         request->header.stamp = this->now();
-        request->motion.tag = motion_name;
-        request->motion.type.value = aimdk_msgs::msg::McMotionType::MIMIC;
+        request->motion = motion_name;
+        request->type = aimdk_msgs::srv::SetMcMotion::Request::MIMIC_QY;
         request->interrupt = interrupt;
 
         RCLCPP_INFO(this->get_logger(),
@@ -217,22 +216,22 @@ private:
 
         auto response = future.get();
         const auto code = response->response.header.code;
-        const auto status = response->response.status.value;
+        const auto state = response->response.state.value;
 
         if (code == 0 &&
-            (status == aimdk_msgs::msg::CommonState::SUCCESS ||
-             status == aimdk_msgs::msg::CommonState::RUNNING)) {
+            (state == aimdk_msgs::msg::CommonState::SUCCESS ||
+             state == aimdk_msgs::msg::CommonState::RUNNING)) {
           RCLCPP_INFO(this->get_logger(),
                       "SetMcMotion request accepted by service: code=%ld "
-                      "status=%d",
-                      static_cast<long>(code), status);
+                      "state=%d",
+                      static_cast<long>(code), state);
           return true;
         }
 
         RCLCPP_WARN(this->get_logger(),
                     "SetMcMotion request attempt %d/%d was not accepted: "
-                    "code=%ld status=%d",
-                    attempt, kMaxAttempts, static_cast<long>(code), status);
+                    "code=%ld state=%d",
+                    attempt, kMaxAttempts, static_cast<long>(code), state);
       }
 
       RCLCPP_ERROR(this->get_logger(),
