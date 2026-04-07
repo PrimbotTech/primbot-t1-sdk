@@ -3,8 +3,17 @@
 # 请求头
 RequestHeader header
 
-# 全身动作名称
-McMotion motion
+# 资源类型
+int32 type
+
+# 自有模型
+int32 MIMIC_QY = 1
+
+# 灵创模型
+int32 MIMIC_LC = 2
+
+# 全身动作名称，若motion为空，加载model中resource; 反之，从本地加载执行资源。
+string motion
 
 # onnx 模型绝对路径
 string model
@@ -15,10 +24,7 @@ string resource
 # 是否打断(给后面animation接口合并预留)
 bool interrupt
 
-# 动作运行时间，0代表立刻运行，单位: ms (UNIX时间)
-uint64 play_timestamp
-
 ---
 
 # 响应头
-CommonResponse response
+CommonTaskResponse response
