@@ -1,6 +1,0 @@
-string name
-string hardware_version
-string software_version
-uint8 mode
-JointMitParams mit_params
-JointProtectConfig protect_config
