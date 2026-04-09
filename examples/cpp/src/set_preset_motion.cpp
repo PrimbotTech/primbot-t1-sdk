@@ -1,13 +1,33 @@
+/**
+ * @brief Example client for /aimdk_5Fmsgs/srv/SetMcPresetMotion.
+ *
+ * This script automatically handles the required state machine transitions for safety.
+ * Playing preset motions (like waving or handshaking) requires the robot to be in
+ * BIPED_WHOLE_BODY_CTRL mode.
+ *
+ * Prerequisites auto-handled by this script:
+ *   1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
+ *   2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
+ *   3. Switch to BIPED_WHOLE_BODY_CTRL (enable whole body control mode).
+ *   4. Finally, execute the requested preset motion.
+ */
+#include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_response.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
 #include "aimdk_msgs/msg/common_task_response.hpp"
+#include "aimdk_msgs/msg/mc_action_status.hpp"
 #include "aimdk_msgs/msg/mc_preset_motion.hpp"
 #include "aimdk_msgs/msg/request_header.hpp"
+#include "aimdk_msgs/srv/get_mc_action.hpp"
+#include "aimdk_msgs/srv/set_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_preset_motion.hpp"
 #include "rclcpp/rclcpp.hpp"
+
 #include <chrono>
 #include <memory>
 #include <signal.h>
+#include <string>
+#include <thread>
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -24,75 +44,50 @@ void signal_handler(int signal) {
 class PresetMotionClient : public rclcpp::Node {
 public:
   PresetMotionClient() : Node("preset_motion_client") {
-    const std::chrono::seconds timeout(8);
-
-    client_ = this->create_client<aimdk_msgs::srv::SetMcPresetMotion>(
+    preset_client_ = this->create_client<aimdk_msgs::srv::SetMcPresetMotion>(
         "/aimdk_5Fmsgs/srv/SetMcPresetMotion");
+    set_action_client_ = this->create_client<aimdk_msgs::srv::SetMcAction>(
+        "/aimdk_5Fmsgs/srv/SetMcAction");
+    get_action_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
+        "/aimdk_5Fmsgs/srv/GetMcAction");
 
     RCLCPP_INFO(this->get_logger(), "SetMcPresetMotion client node created.");
-
-    while (!client_->wait_for_service(std::chrono::seconds(2))) {
-      if (!rclcpp::ok()) {
-        return;
-      }
-      RCLCPP_INFO(this->get_logger(), "Service unavailable, waiting...");
-    }
-    RCLCPP_INFO(this->get_logger(),
-                "Service available, ready to send request.");
+    wait_for_services();
   }
 
   bool send_request(int motion_id) {
+    if (!ensure_ready_state()) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Failed to prepare robot state for preset motion.");
+      return false;
+    }
+
     try {
       auto request =
           std::make_shared<aimdk_msgs::srv::SetMcPresetMotion::Request>();
-      request->header = aimdk_msgs::msg::RequestHeader();
-
-      // motion.value is the preset motion ID.
-      aimdk_msgs::msg::McPresetMotion motion;
-      motion.value = motion_id;
-      request->motion = motion;
+      request->header.stamp = this->now();
+      request->motion.value = motion_id;
       request->interrupt = true;
 
       RCLCPP_INFO(this->get_logger(),
-                  "Sending request to set preset motion: motion=%d",
-                  motion_id);
+                  "Sending preset motion request: ID=%d", motion_id);
 
-      const std::chrono::milliseconds timeout(2000);
-      request->header.stamp = this->now();
-      auto future = client_->async_send_request(request);
-      auto retcode = rclcpp::spin_until_future_complete(shared_from_this(),
-                                                        future, timeout);
+      auto future = preset_client_->async_send_request(request);
+      auto retcode = rclcpp::spin_until_future_complete(
+          shared_from_this(), future, std::chrono::seconds(2));
+
       if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
         RCLCPP_ERROR(this->get_logger(), "Service call failed or timed out.");
         return false;
       }
 
       auto response = future.get();
-      auto code = response->response.header.code;
-      auto state = response->response.state.value;
-
-      // Treat both SUCCESS and RUNNING as successful requests.
-      if (code != 0) {
-        RCLCPP_WARN(this->get_logger(),
-                    "Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
-                    code, state, response->response.task_id);
-        return false;
-      }
-
-      if (state == aimdk_msgs::msg::CommonState::SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "Preset motion set successfully: %lu",
+      if (response && response->response.header.code == 0) {
+        RCLCPP_INFO(this->get_logger(), "Motion request accepted. Task ID: %lu",
                     response->response.task_id);
         return true;
-      } else if (state == aimdk_msgs::msg::CommonState::RUNNING) {
-        RCLCPP_INFO(this->get_logger(), "Preset motion executing: %lu",
-                    response->response.task_id);
-        return true;
-      } else {
-        RCLCPP_WARN(this->get_logger(),
-                    "Failed to set preset motion: code=%ld, state=%d, task_id=%lu",
-                    code, state, response->response.task_id);
-        return false;
       }
+      return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
       return false;
@@ -100,7 +95,101 @@ public:
   }
 
 private:
-  rclcpp::Client<aimdk_msgs::srv::SetMcPresetMotion>::SharedPtr client_;
+  struct ActionInfo {
+    std::string action_desc;
+    int32_t status = aimdk_msgs::msg::McActionStatus::IDLE;
+  };
+
+  void wait_for_services() {
+    auto wait = [this](auto &client, const std::string &name) {
+      while (!client->wait_for_service(std::chrono::seconds(2))) {
+        if (!rclcpp::ok())
+          return;
+        RCLCPP_INFO(this->get_logger(), "Waiting for service %s...",
+                    name.c_str());
+      }
+    };
+    wait(preset_client_, "/aimdk_5Fmsgs/srv/SetMcPresetMotion");
+    wait(set_action_client_, "/aimdk_5Fmsgs/srv/SetMcAction");
+    wait(get_action_client_, "/aimdk_5Fmsgs/srv/GetMcAction");
+  }
+
+  bool get_action_status(ActionInfo &info) {
+    auto request = std::make_shared<aimdk_msgs::srv::GetMcAction::Request>();
+    request->request.header.stamp = this->now();
+    auto future = get_action_client_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(shared_from_this(), future,
+                                           std::chrono::seconds(2)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+      return false;
+
+    auto res = future.get();
+    info.action_desc = res->info.action_desc;
+    info.status = res->info.status.value;
+    return true;
+  }
+
+  bool set_action(const std::string &desc) {
+    auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
+    request->header.stamp = this->now();
+    request->command.action_desc = desc;
+    RCLCPP_INFO(this->get_logger(), "Requesting state switch to: %s",
+                desc.c_str());
+    auto future = set_action_client_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(shared_from_this(), future,
+                                           std::chrono::seconds(2)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+      return false;
+
+    auto res = future.get();
+    return res && res->response.status.value ==
+                      aimdk_msgs::msg::CommonState::SUCCESS;
+  }
+
+  bool wait_for_action(const std::string &target,
+                       std::chrono::seconds timeout = std::chrono::seconds(10)) {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      ActionInfo info;
+      if (get_action_status(info) && info.action_desc == target &&
+          info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+        RCLCPP_INFO(this->get_logger(), "Robot reached state: %s",
+                    target.c_str());
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    return false;
+  }
+
+  bool ensure_ready_state() {
+    ActionInfo info;
+    if (get_action_status(info) && info.action_desc == "BIPED_WHOLE_BODY_CTRL" &&
+        info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+      return true;
+    }
+
+    RCLCPP_INFO(this->get_logger(),
+                "Current state is not BIPED_WHOLE_BODY_CTRL. Starting safety "
+                "transition sequence...");
+
+    if (info.action_desc != "PASSIVE_DEFAULT") {
+      if (!set_action("PASSIVE_DEFAULT") || !wait_for_action("PASSIVE_DEFAULT"))
+        return false;
+    }
+    if (!set_action("BIPED_STAND_DEFAULT") ||
+        !wait_for_action("BIPED_STAND_DEFAULT"))
+      return false;
+    if (!set_action("BIPED_WHOLE_BODY_CTRL") ||
+        !wait_for_action("BIPED_WHOLE_BODY_CTRL"))
+      return false;
+
+    return true;
+  }
+
+  rclcpp::Client<aimdk_msgs::srv::SetMcPresetMotion>::SharedPtr preset_client_;
+  rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr set_action_client_;
+  rclcpp::Client<aimdk_msgs::srv::GetMcAction>::SharedPtr get_action_client_;
 };
 
 int main(int argc, char *argv[]) {
@@ -112,20 +201,21 @@ int main(int argc, char *argv[]) {
     g_node = std::make_shared<PresetMotionClient>();
     auto client = std::dynamic_pointer_cast<PresetMotionClient>(g_node);
 
-    int motion = 1003;
-    std::cout
-        << "Enter preset motion ID(default: 1003): ";
-    std::cin >> motion;
+    int motion_id = 1001;
+    std::cout << "\nAvailable Preset Motions:\n"
+              << "  1001: raise\n  1002: wave\n  1003: handshake\n  1004: airkiss\n"
+              << "\nEnter preset motion ID: ";
+    if (!(std::cin >> motion_id)) return 0;
+    
     if (client) {
-      client->send_request(motion);
+      client->send_request(motion_id);
     }
     g_node.reset();
     rclcpp::shutdown();
-
     return 0;
   } catch (const std::exception &e) {
-    RCLCPP_ERROR(rclcpp::get_logger("main"),
-                 "Program exited with exception: %s", e.what());
+    RCLCPP_ERROR(rclcpp::get_logger("main"), "Exited with exception: %s",
+                 e.what());
     return 1;
   }
 }
