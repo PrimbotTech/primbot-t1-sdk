@@ -18,6 +18,13 @@ Examples:
 
   python3 examples/python/set_mc_action.py --ros-args -p type:=motion -p \
   motion:=INTRO_POSE6 -p interrupt:=true
+
+Notes:
+  - This script automatically handles state machine transitions for safety.
+  - Before executing the requested action/motion, it will sequentially attempt:
+    1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
+    2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
+    3. Execute the user-specified action or motion.
 """
 
 import time
@@ -59,6 +66,27 @@ class SetMcActionClient(Node):
 
         self.wait_for_services()
 
+        # Step 1: Pre-switch to PASSIVE_DEFAULT to ensure a clean state transition path
+        current_id, current_desc, current_status = self.get_action_status()
+        if current_desc != 'PASSIVE_DEFAULT':
+            self.get_logger().info('Pre-requisite: Switching to PASSIVE_DEFAULT...')
+            if not self.set_action('PASSIVE_DEFAULT'):
+                self.get_logger().error('Failed to switch to PASSIVE_DEFAULT.')
+                return False
+            if not self.wait_for_action('PASSIVE_DEFAULT'):
+                return False
+
+        # Step 2: Switch to BIPED_STAND_DEFAULT before executing the final target
+        current_id, current_desc, current_status = self.get_action_status()
+        if current_desc != 'BIPED_STAND_DEFAULT':
+            self.get_logger().info('Pre-requisite: Switching to BIPED_STAND_DEFAULT...')
+            if not self.set_action('BIPED_STAND_DEFAULT'):
+                self.get_logger().error('Failed to switch to BIPED_STAND_DEFAULT.')
+                return False
+            if not self.wait_for_action('BIPED_STAND_DEFAULT'):
+                return False
+
+        # Step 3: Execute intended user logic
         if self.type == 'action':
             action_id, action_desc, status = self.get_action_status()
             if action_desc == self.action_desc:

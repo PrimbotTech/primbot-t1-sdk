@@ -17,6 +17,14 @@
  *
  *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=motion -p
  *   motion:=INTRO_POSE6 -p interrupt:=true
+ *
+ * Notes:
+ *   - This script automatically handles state machine transitions for safety.
+ *   - Before executing the requested action/motion, it will sequentially
+ * attempt:
+ *     1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
+ *     2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
+ *     3. Execute the user-specified action or motion.
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
@@ -72,6 +80,27 @@ public:
     }
 
     wait_for_services();
+    ActionInfo current;
+
+    // Step 1: Pre-switch to PASSIVE_DEFAULT to ensure a clean state transition path
+    if (get_action_status(current) && current.action_desc != "PASSIVE_DEFAULT") {
+      RCLCPP_INFO(this->get_logger(), "Pre-requisite: Switching to PASSIVE_DEFAULT...");
+      if (!set_action("PASSIVE_DEFAULT") || !wait_for_action("PASSIVE_DEFAULT")) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to switch to PASSIVE_DEFAULT.");
+        return false;
+      }
+    }
+
+    // Step 2: Switch to BIPED_STAND_DEFAULT before executing the final target
+    if (get_action_status(current) && current.action_desc != "BIPED_STAND_DEFAULT") {
+      RCLCPP_INFO(this->get_logger(), "Pre-requisite: Switching to BIPED_STAND_DEFAULT...");
+      if (!set_action("BIPED_STAND_DEFAULT") || !wait_for_action("BIPED_STAND_DEFAULT")) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to switch to BIPED_STAND_DEFAULT.");
+        return false;
+      }
+    }
+
+    // Step 3: Execute intended user logic
 
     if (type_ == "action") {
       ActionInfo info;
