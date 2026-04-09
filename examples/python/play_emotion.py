@@ -1,5 +1,13 @@
 #!/usr/bin/env python3
 
+"""
+Example client for /aimdk_5Fmsgs/srv/PlayEmotion.
+
+Usage Note:
+  It is recommended to specify the 'type' and ('emotion_ids' or 'file_paths') based on your requirements.
+  If no parameters are provided, the script will attempt to play a default emotion.
+"""
+
 import rclpy
 import rclpy.logging
 from rclpy.node import Node
@@ -13,13 +21,13 @@ class PlayEmotionClient(Node):
     def __init__(self):
         super().__init__("play_emotion_client")
         self.declare_parameter("type", "emotion")
-        self.declare_parameter("emotion_ids", Parameter.Type.INTEGER_ARRAY)
+        self.declare_parameter("emotion_ids", [10])
         self.declare_parameter("file_paths", Parameter.Type.STRING_ARRAY)
 
         self.type = self.get_parameter("type").value
         self.emotion_ids = self.get_parameter_or(
             "emotion_ids",
-            Parameter("emotion_ids", Parameter.Type.INTEGER_ARRAY, []),
+            Parameter("emotion_ids", Parameter.Type.INTEGER_ARRAY, [10]),
         ).value
         self.file_paths = self.get_parameter_or(
             "file_paths",
@@ -40,60 +48,58 @@ class PlayEmotionClient(Node):
             if not self.validate_parameters():
                 return False
 
-            request = PlayEmotion.Request()
-            request.header = CommonRequest()
-            request.header.header.stamp = self.get_clock().now().to_msg()
-            request.type = self.type
-            request.priority = self.priority
-            request.loop_count = self.loop_count
+            # 一套代码兼容不同机型，T系列默认ID=10，Q系列默认ID=3001
+            # 第一步：尝试原始请求（默认 ID 为 10）
+            ok = self._call_service(self.type, list(self.emotion_ids), list(self.file_paths))
 
-            if self.type == "emotion":
-                request.emotion_ids = list(self.emotion_ids)
-            else:
-                request.file_paths = list(self.file_paths)
+            # 第二步：降级逻辑
+            # 如果是播放表情模式，且尝试 ID 10 失败，则自动尝试播放保底 ID 3001
+            if not ok and self.type == "emotion" and 10 in self.emotion_ids:
+                # 尝试播放保底表情 3001
+                ok = self._call_service("emotion", [3001], [])
 
-            self.get_logger().info(
-                "Sending PlayEmotion request: "
-                f"type={request.type}, "
-                f"emotion_ids={list(request.emotion_ids)}, "
-                f"file_paths={list(request.file_paths)}, "
-                f"priority={request.priority}, "
-                f"loop_count={request.loop_count}"
-            )
-            for emotion_id in request.emotion_ids:
-                self.get_logger().info(f"emotion_id={emotion_id}")
-            for file_path in request.file_paths:
-                self.get_logger().info(f"file_path={file_path}")
-
-            future = self.client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-            if not future.done():
-                self.get_logger().error("Service call failed or timed out.")
+            if not ok:
+                self.get_logger().error("PlayEmotion request failed after all attempts.")
                 return False
 
-            response = future.result()
-            if response is None:
-                self.get_logger().error("Service call failed or timed out.")
-                return False
-
-            code = response.header.header.code
-            status = response.header.status.value
-            self.get_logger().info(
-                "Response: "
-                f"code={code}, "
-                f"status={status}, "
-                f"message={response.header.message}"
-            )
-
-            if code == 0 or status == CommonState.SUCCESS:
-                self.get_logger().info("PlayEmotion request accepted.")
-                return True
-
-            self.get_logger().error("PlayEmotion request failed.")
-            return False
+            return True
         except Exception as error:  # noqa: BLE001
             self.get_logger().error(f"Exception occurred: {error}")
             return False
+
+    def _call_service(self, msg_type, emotion_ids, file_paths) -> bool:
+        request = PlayEmotion.Request()
+        request.header = CommonRequest()
+        request.header.header.stamp = self.get_clock().now().to_msg()
+        request.type = msg_type
+        request.priority = self.priority
+        request.loop_count = self.loop_count
+        request.emotion_ids = emotion_ids
+        request.file_paths = file_paths
+
+        self.get_logger().info(
+            f"Sending PlayEmotion request: type={msg_type}, "
+            f"emotion_ids={emotion_ids}, file_paths={file_paths}"
+        )
+
+        future = self.client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+
+        if not future.done():
+            return False
+
+        response = future.result()
+        if response is None:
+            return False
+
+        code = response.header.header.code
+        status = response.header.status.value
+        if code == 0 or status == CommonState.SUCCESS:
+            self.get_logger().info(f"Request accepted (code={code}, status={status}).")
+            return True
+
+        self.get_logger().warning(f"Request rejected by service (code={code}, status={status}).")
+        return False
 
     def validate_parameters(self) -> bool:
         if self.type not in ("emotion", "file"):
