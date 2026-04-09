@@ -1,3 +1,4 @@
+# 注意：在使用本脚本前，需首先关闭机器人本体运控模块，否则可能出现不可预期的异常行为！
 #!/usr/bin/env python3
 
 """
@@ -144,6 +145,8 @@ class JointControlNode(Node):
             self.on_joint_state,
             qos,
         )
+        # Timer to print joint state every 10 seconds
+        self.print_timer = self.create_timer(10.0, self.print_joint_state)
 
         self.latest_state: Optional[JointStateArray] = None
         self.target_full_indices: List[int] = []
@@ -217,6 +220,16 @@ class JointControlNode(Node):
         if self.trajectory_started or self.finished:
             return
         self.start_trajectory()
+
+    def print_joint_state(self) -> None:
+        """Print the latest joint state every 10 seconds after it is received."""
+        if self.latest_state is None:
+            self.get_logger().warning("No joint state received yet – waiting for /aima/hal/joint/state.")
+            return
+        lines = []
+        for joint in self.latest_state.joints:
+            lines.append(f"{joint.name}: pos={joint.position:.3f}, vel={joint.velocity:.3f}")
+        self.get_logger().info("Current joint state (every 10 s): " + ", ".join(lines))
 
     def start_trajectory(self) -> None:
         if self.latest_state is None:

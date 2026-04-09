@@ -1,8 +1,12 @@
+// 注意：在使用本脚本前，需首先关闭机器人本体运控模块，否则可能出现不可预期的异常行为！
 // Prerequisites:
 //     1. Build the SDK: `colcon build`
 //     2. Source environment: `source install/setup.bash`
 //
-// Usage:
+// Before running the following command, place the robot flat on the ground.
+// The following example lifts the left arm and right leg.
+
+// Example:
 //     ros2 run aimdk_examples_cpp joint_control --ros-args \
 //       -p joint_names:="['FL_HIP_PITCH_Joint']" \
 //       -p target_positions:="[2.0]" \
@@ -106,6 +110,10 @@ class JointControlNode : public rclcpp::Node
     state_sub_ = this->create_subscription<aimdk_msgs::msg::JointStateArray>(
       "/aima/hal/joint/state", qos,
       std::bind(&JointControlNode::on_joint_state, this, std::placeholders::_1));
+    // Timer to print joint state every 10 seconds
+    print_timer_ = this->create_wall_timer(
+      std::chrono::seconds(10),
+      std::bind(&JointControlNode::print_joint_state, this));
 
     wait_started_at_     = SteadyClock::now();
     state_timeout_timer_ = this->create_wall_timer(
@@ -175,6 +183,27 @@ class JointControlNode : public rclcpp::Node
     }
 
     start_trajectory();
+  }
+
+  void print_joint_state()
+  {
+    if (!latest_state_) {
+      RCLCPP_WARN(this->get_logger(), "No joint state received yet – waiting for /aima/hal/joint/state.");
+      return;
+    }
+    std::vector<std::string> parts;
+    for (const auto &joint : latest_state_->joints) {
+      std::ostringstream oss;
+      oss << joint.name << ": pos=" << std::fixed << std::setprecision(3) << joint.position
+          << ", vel=" << joint.velocity;
+      parts.push_back(oss.str());
+    }
+    std::string msg = "Current joint state (every 10 s): ";
+    for (size_t i = 0; i < parts.size(); ++i) {
+      if (i > 0) msg += ", ";
+      msg += parts[i];
+    }
+    RCLCPP_INFO(this->get_logger(), "%s", msg.c_str());
   }
 
   void start_trajectory()
@@ -470,6 +499,7 @@ class JointControlNode : public rclcpp::Node
   rclcpp::Subscription<aimdk_msgs::msg::JointStateArray>::SharedPtr state_sub_;
   rclcpp::TimerBase::SharedPtr state_timeout_timer_;
   rclcpp::TimerBase::SharedPtr control_timer_;
+  rclcpp::TimerBase::SharedPtr print_timer_;
 };
 
 int main(int argc, char **argv)
