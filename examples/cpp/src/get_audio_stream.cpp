@@ -7,15 +7,24 @@
  *     this many seconds have elapsed. Set <= 0 to run until Ctrl+C.
  *   - log_every_n_messages: print progress every N messages. Set <= 0 to
  *     disable periodic progress logs.
+ *   - enable_playback: if True, re-publishes the captured audio to the playback
+ *     topic to echo the audio out to the speakers. Default is False.
  *
  * Examples:
+ *   # 1. Capture for 5 seconds to a specific file:
  *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args \
  *     -p output_file:=/tmp/audio_capture.pcm -p capture_seconds:=5
  *
+ *   # 2. Capture continuously until Ctrl+C is pressed:
  *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args \
  *     -p capture_seconds:=-1
+ *
+ *   # 3. Echo audio to speakers (loopback) and capture for 10 seconds:
+ *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args \
+ *     -p enable_playback:=true -p capture_seconds:=10
  */
 #include "aimdk_msgs/msg/audio_capture.hpp"
+#include "aimdk_msgs/msg/audio_playback.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
@@ -36,6 +45,7 @@ public:
     output_file_ =
         this->declare_parameter<std::string>("output_file", "/tmp/audio_capture.pcm");
     capture_seconds_ = this->declare_parameter<int>("capture_seconds", 5);
+    enable_playback_ = this->declare_parameter<bool>("enable_playback", false);
 
     file_enabled_ = !output_file_.empty();
     if (file_enabled_ && !prepare_output_file()) {
@@ -44,6 +54,12 @@ public:
 
     auto qos = rclcpp::QoS(rclcpp::KeepLast(20));
     qos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+
+    if (enable_playback_) {
+      pub_ = this->create_publisher<aimdk_msgs::msg::AudioPlayback>(
+          "/aima/hal/audio/playback", qos);
+      RCLCPP_INFO(this->get_logger(), "Audio playback loopback is ENABLED.");
+    }
 
     sub_ = this->create_subscription<aimdk_msgs::msg::AudioCapture>(
         "/aima/hal/audio/capture", qos,
@@ -156,6 +172,16 @@ private:
       }
     }
 
+    if (pub_) {
+      aimdk_msgs::msg::AudioPlayback playback_msg;
+      playback_msg.stamps = msg->stamps;
+      playback_msg.info = msg->info;
+      playback_msg.data = msg->data;
+      playback_msg.pkg_name = "get_audio_stream_loopback";
+      playback_msg.token_id = "loopback_session";
+      pub_->publish(playback_msg);
+    }
+
     if (log_every_n_messages_ > 0 &&
         message_count_ % static_cast<std::uint64_t>(log_every_n_messages_) ==
             0) {
@@ -240,6 +266,7 @@ private:
   bool size_mismatch_logged_{false};
   bool stop_requested_{false};
   bool summary_logged_{false};
+  bool enable_playback_{false};
   std::uint64_t message_count_{0};
   std::uint64_t total_bytes_{0};
   std::uint32_t last_sample_rate_{0};
@@ -249,6 +276,7 @@ private:
   std::chrono::steady_clock::time_point first_packet_time_{};
   std::ofstream output_stream_;
   rclcpp::Subscription<aimdk_msgs::msg::AudioCapture>::SharedPtr sub_;
+  rclcpp::Publisher<aimdk_msgs::msg::AudioPlayback>::SharedPtr pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 

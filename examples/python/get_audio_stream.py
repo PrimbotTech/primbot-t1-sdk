@@ -12,13 +12,21 @@ Supported parameters:
     this many seconds have elapsed. Set <= 0 to run until Ctrl+C.
   - log_every_n_messages: print progress every N messages. Set <= 0 to
     disable periodic progress logs.
+  - enable_playback: if True, re-publishes the captured audio to the playback
+    topic to echo the audio out to the speakers. Default is False.
 
 Examples:
+  # 1. Capture for 5 seconds to a specific file:
   python3 examples/python/get_audio_stream.py --ros-args \
     -p output_file:=/tmp/audio_capture.pcm -p capture_seconds:=5
 
+  # 2. Capture continuously until Ctrl+C is pressed:
   python3 examples/python/get_audio_stream.py --ros-args \
     -p capture_seconds:=-1
+
+  # 3. Echo audio to speakers (loopback) and capture for 10 seconds:
+  python3 examples/python/get_audio_stream.py --ros-args \
+    -p enable_playback:=true -p capture_seconds:=10
 """
 
 from pathlib import Path
@@ -28,7 +36,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import HistoryPolicy, QoSProfile, ReliabilityPolicy
 
-from aimdk_msgs.msg import AudioCapture
+from aimdk_msgs.msg import AudioCapture, AudioPlayback
 
 
 class AudioStreamSubscriber(Node):
@@ -41,6 +49,9 @@ class AudioStreamSubscriber(Node):
         self.capture_seconds = self.declare_parameter("capture_seconds", 5).value
         self.log_every_n_messages = self.declare_parameter(
             "log_every_n_messages", 100
+        ).value
+        self.enable_playback = self.declare_parameter(
+            "enable_playback", False
         ).value
 
         self.file_enabled = bool(self.output_file)
@@ -70,6 +81,17 @@ class AudioStreamSubscriber(Node):
             self.on_audio_capture,
             qos,
         )
+
+        if self.enable_playback:
+            self.playback_publisher = self.create_publisher(
+                AudioPlayback,
+                "/aima/hal/audio/playback",
+                qos,
+            )
+            self.get_logger().info("Audio playback loopback is ENABLED.")
+        else:
+            self.playback_publisher = None
+
         self.timer = self.create_timer(0.2, self.check_auto_stop)
 
         if self.file_enabled:
@@ -140,6 +162,15 @@ class AudioStreamSubscriber(Node):
                 )
                 self.file_enabled = False
                 self._close_output_file()
+
+        if self.playback_publisher is not None:
+            playback_msg = AudioPlayback()
+            playback_msg.stamps = msg.stamps
+            playback_msg.info = msg.info
+            playback_msg.data = msg.data
+            playback_msg.pkg_name = "get_audio_stream_loopback"
+            playback_msg.token_id = "loopback_session"
+            self.playback_publisher.publish(playback_msg)
 
         if (
             self.log_every_n_messages > 0
