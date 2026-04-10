@@ -21,6 +21,11 @@
 #include "aimdk_msgs/srv/get_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_preset_motion.hpp"
+#include <string>
+#include <iostream>
+#include <map>
+#include <algorithm>
+#include <cctype>
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
@@ -201,11 +206,39 @@ int main(int argc, char *argv[]) {
     g_node = std::make_shared<PresetMotionClient>();
     auto client = std::dynamic_pointer_cast<PresetMotionClient>(g_node);
 
-    int motion_id = 1001;
-    std::cout << "\nAvailable Preset Motions:\n"
-              << "  1001: raise\n  1002: wave\n  1003: handshake\n  1004: airkiss\n"
-              << "\nEnter preset motion ID: ";
+    // Prompt user to refer to documentation
+    std::cout << "\nPlease refer to the interface documentation for the list of supported motions for this model." << std::endl;
+    // Ask for robot series (Q or T)
+    std::cout << "\nEnter robot series (Q/T): ";
+    std::string robot_series;
+    std::getline(std::cin, robot_series);
+    // Trim whitespace and convert to uppercase
+    robot_series.erase(std::remove_if(robot_series.begin(), robot_series.end(), ::isspace), robot_series.end());
+    std::transform(robot_series.begin(), robot_series.end(), robot_series.begin(), ::toupper);
+
+    std::map<int, std::string> motion_map;
+    if (robot_series == "T") {
+        motion_map = {{1001, "raise"}, {1002, "wave"}, {1003, "handshake"}, {1004, "airkiss"}};
+    } else if (robot_series == "Q") {
+        motion_map = {{3001, "wave"}, {3002, "handshake"}, {3003, "bump"}, {3004, "wave_hand"}};
+    } else {
+        std::cerr << "Unknown series. Please enter 'Q' or 'T'." << std::endl;
+        return 1;
+    }
+
+    // Display available motions
+    std::cout << "\nAvailable Preset Motions:" << std::endl;
+    for (const auto &kv : motion_map) {
+        std::cout << "  " << kv.first << ": " << kv.second << std::endl;
+    }
+    std::cout << "\nEnter preset motion ID: ";
+    int motion_id = 0;
     if (!(std::cin >> motion_id)) return 0;
+    // Validate selection
+    if (motion_map.find(motion_id) == motion_map.end()) {
+        std::cerr << "Invalid motion ID selected." << std::endl;
+        return 1;
+    }
     
     if (client) {
       client->send_request(motion_id);

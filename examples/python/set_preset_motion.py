@@ -24,7 +24,7 @@ from aimdk_msgs.msg import (
     CommonRequest, CommonState, McAction, McActionCommand, 
     McActionStatus, McPresetMotion, RequestHeader
 )
-
+import sys
 
 class SetMcPresetMotionClient(Node):
     def __init__(self):
@@ -147,10 +147,21 @@ def main(args=None):
     rclpy.init(args=args)
     node = None
     try:
-        motion_map = {1001: "raise", 1002: "wave", 1003: "handshake", 1004: "airkiss"}
+        # Prompt user to refer to documentation
+        print("\nPlease refer to the interface documentation for the list of supported motions for this model.")
+        print("If you haven't found the motion list, you can choose recommended motions based on the robot model.")
+        # Determine robot series (Q or T). In a real scenario this could be obtained from a parameter or config.
+        robot_series = input("\nEnter robot series (Q/T): ").strip().upper()
+        if robot_series == "T":
+            motion_map = {1001: "raise", 1002: "wave", 1003: "handshake", 1004: "airkiss"}
+        elif robot_series == "Q":
+            motion_map = {3001: "wave", 3002: "handshake", 3003: "bump", 3004: "wave_hand"}
+        else:
+            print("Unknown series. Please enter 'Q' or 'T'.")
+            sys.exit(1)
         print("\nAvailable Preset Motions:")
-        for k, v in motion_map.items(): print(f"  {k}: {v}")
-        
+        for k, v in motion_map.items():
+            print(f"  {k}: {v}")
         motion_id = int(input("\nEnter preset motion ID: "))
         node = SetMcPresetMotionClient()
         node.send_motion_request(motion_id)

@@ -81,7 +81,7 @@ class JointControlNode : public rclcpp::Node
     control_period_s_ =
       this->declare_parameter<double>("control_period_s", 0.002);
     state_timeout_s_ =
-      this->declare_parameter<double>("state_timeout_s", 5.0);
+      this->declare_parameter<double>("state_timeout_s", 10.0);
     publish_full_command_ =
       this->declare_parameter<bool>("publish_full_command", true);
 

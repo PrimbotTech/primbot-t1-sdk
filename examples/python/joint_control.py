@@ -83,7 +83,7 @@ class JointControlNode(Node):
         ).value
         self.max_jerk = self.declare_parameter("max_jerk", 25.0).value
         self.control_period_s = self.declare_parameter("control_period_s", 0.002).value
-        self.state_timeout_s = self.declare_parameter("state_timeout_s", 5.0).value
+        self.state_timeout_s = self.declare_parameter("state_timeout_s", 10.0).value
         self.publish_full_command = self.declare_parameter(
             "publish_full_command", True
         ).value
