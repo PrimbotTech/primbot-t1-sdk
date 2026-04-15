@@ -31,6 +31,8 @@ Examples:
 
 from pathlib import Path
 import time
+import os
+import threading
 
 import rclpy
 from rclpy.node import Node
@@ -224,6 +226,15 @@ def main(args=None) -> None:
     try:
         rclpy.spin(node)
     finally:
+        # Start a watchdog thread to force exit if cleanup hangs for more than 3s
+        def watchdog_exit():
+            time.sleep(3)
+            # Use os._exit to bypass any remaining cleanup and force terminate
+            os._exit(0)
+        
+        watchdog_thread = threading.Thread(target=watchdog_exit, daemon=True)
+        watchdog_thread.start()
+
         node._close_output_file()
         node.log_summary()
         node.destroy_node()
