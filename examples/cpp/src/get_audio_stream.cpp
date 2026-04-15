@@ -36,6 +36,8 @@
 #include <signal.h>
 #include <stdexcept>
 #include <string>
+#include <thread>
+#include <unistd.h>
 
 using namespace std::chrono_literals;
 
@@ -309,6 +311,14 @@ int main(int argc, char **argv) {
     auto node = std::make_shared<AudioStreamSubscriber>();
     g_node = node;
     rclcpp::spin(node);
+    
+    // Start a watchdog thread to force exit if cleanup hangs for more than 3s
+    std::thread([]() {
+      std::this_thread::sleep_for(std::chrono::seconds(3));
+      // Use _exit to bypass any remaining cleanup and force terminate
+      _exit(0);
+    }).detach();
+
     g_node.reset();
     rclcpp::shutdown();
     return 0;
