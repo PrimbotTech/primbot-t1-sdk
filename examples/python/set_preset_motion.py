@@ -8,10 +8,10 @@ Playing preset motions (like waving or handshaking) requires the robot to be in
 BIPED_WHOLE_BODY_CTRL mode.
 
 Prerequisites auto-handled by this script:
-  1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
-  2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
-  3. Switch to BIPED_WHOLE_BODY_CTRL (enable whole body control mode).
-  4. Finally, execute the requested preset motion.
+  The script ensures a safe sequential transition path:
+  PASSIVE_DEFAULT -> BIPED_STAND_DEFAULT -> BIPED_WALK_RUN -> BIPED_WHOLE_BODY_CTRL.
+  Depending on the initial state, it enters the sequence at the appropriate step.
+  Finally, execute the requested preset motion.
 """
 
 import time
@@ -102,21 +102,36 @@ class SetMcPresetMotionClient(Node):
         if desc == 'BIPED_WHOLE_BODY_CTRL' and status == McActionStatus.RUNNING:
             return True
 
-        self.get_logger().info('Current state is not BIPED_WHOLE_BODY_CTRL. Starting safety transition sequence...')
+        self.get_logger().info(f'Current state is {desc}. Starting state machine transition sequence...')
         
-        # Step 1: Switch to PASSIVE_DEFAULT
-        if desc != 'PASSIVE_DEFAULT':
-            if not self.set_action('PASSIVE_DEFAULT') or not self.wait_for_action('PASSIVE_DEFAULT'):
+        # Define the target sequence of states
+        sequence = [
+            'PASSIVE_DEFAULT',
+            'BIPED_STAND_DEFAULT',
+            'BIPED_WALK_RUN',
+            'BIPED_WHOLE_BODY_CTRL'
+        ]
+        
+        # Determine starting point in the sequence
+        start_index = 0
+        if desc == 'PASSIVE_DEFAULT':
+            start_index = 1
+        elif desc == 'BIPED_STAND_DEFAULT':
+            start_index = 2
+        elif desc == 'BIPED_WALK_RUN':
+            start_index = 3
+        elif desc in ['DAMPING_DEFAULT', 'STORE_DEFAULT']:
+            start_index = 0
+        else:
+            # For any other unknown state, safer to start from PASSIVE_DEFAULT
+            start_index = 0
+            
+        # Execute the sequence from the determined start point
+        for i in range(start_index, len(sequence)):
+            target = sequence[i]
+            if not self.set_action(target) or not self.wait_for_action(target):
                 return False
-        
-        # Step 2: Switch to BIPED_STAND_DEFAULT
-        if not self.set_action('BIPED_STAND_DEFAULT') or not self.wait_for_action('BIPED_STAND_DEFAULT'):
-            return False
-            
-        # Step 3: Switch to BIPED_WHOLE_BODY_CTRL
-        if not self.set_action('BIPED_WHOLE_BODY_CTRL') or not self.wait_for_action('BIPED_WHOLE_BODY_CTRL'):
-            return False
-            
+                
         return True
 
     def send_motion_request(self, motion_id: int) -> bool:

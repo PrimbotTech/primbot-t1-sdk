@@ -6,10 +6,10 @@
  * BIPED_WHOLE_BODY_CTRL mode.
  *
  * Prerequisites auto-handled by this script:
- *   1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
- *   2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
- *   3. Switch to BIPED_WHOLE_BODY_CTRL (enable whole body control mode).
- *   4. Finally, execute the requested preset motion.
+ *   The script ensures a safe sequential transition path:
+ *   PASSIVE_DEFAULT -> BIPED_STAND_DEFAULT -> BIPED_WALK_RUN -> BIPED_WHOLE_BODY_CTRL.
+ *   Depending on the initial state, it enters the sequence at the appropriate step.
+ *   Finally, execute the requested preset motion.
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_response.hpp"
@@ -24,6 +24,7 @@
 #include <string>
 #include <iostream>
 #include <map>
+#include <vector>
 #include <algorithm>
 #include <cctype>
 #include "rclcpp/rclcpp.hpp"
@@ -175,19 +176,34 @@ private:
     }
 
     RCLCPP_INFO(this->get_logger(),
-                "Current state is not BIPED_WHOLE_BODY_CTRL. Starting safety "
-                "transition sequence...");
+                "Current state is %s. Starting state machine transition sequence...",
+                info.action_desc.c_str());
 
-    if (info.action_desc != "PASSIVE_DEFAULT") {
-      if (!set_action("PASSIVE_DEFAULT") || !wait_for_action("PASSIVE_DEFAULT"))
-        return false;
+    std::vector<std::string> sequence = {
+      "PASSIVE_DEFAULT",
+      "BIPED_STAND_DEFAULT",
+      "BIPED_WALK_RUN",
+      "BIPED_WHOLE_BODY_CTRL"
+    };
+
+    size_t start_index = 0;
+    if (info.action_desc == "PASSIVE_DEFAULT") {
+        start_index = 1;
+    } else if (info.action_desc == "BIPED_STAND_DEFAULT") {
+        start_index = 2;
+    } else if (info.action_desc == "BIPED_WALK_RUN") {
+        start_index = 3;
+    } else if (info.action_desc == "DAMPING_DEFAULT" || info.action_desc == "STORE_DEFAULT") {
+        start_index = 0;
+    } else {
+        start_index = 0;
     }
-    if (!set_action("BIPED_STAND_DEFAULT") ||
-        !wait_for_action("BIPED_STAND_DEFAULT"))
-      return false;
-    if (!set_action("BIPED_WHOLE_BODY_CTRL") ||
-        !wait_for_action("BIPED_WHOLE_BODY_CTRL"))
-      return false;
+
+    for (size_t i = start_index; i < sequence.size(); ++i) {
+        if (!set_action(sequence[i]) || !wait_for_action(sequence[i])) {
+            return false;
+        }
+    }
 
     return true;
   }
