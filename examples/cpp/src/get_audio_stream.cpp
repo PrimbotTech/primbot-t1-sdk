@@ -1,27 +1,16 @@
 /**
- * @brief Example subscriber for /aima/hal/audio/capture
+ * Usage:
+ *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args -p output_file:=<path> -p capture_seconds:=<seconds>
  *
- * Supported ROS parameters:
- *   - output_file: PCM output path. Leave empty to disable file dump.
- *   - capture_seconds: stop automatically after the first packet arrives and
- *     this many seconds have elapsed. Set <= 0 to run until Ctrl+C.
- *   - log_every_n_messages: print progress every N messages. Set <= 0 to
- *     disable periodic progress logs.
- *   - enable_playback: if True, re-publishes the captured audio to the playback
- *     topic to echo the audio out to the speakers. Default is False.
+ * Notes:
+ *   - After the recording duration expires, you MUST type 'y' in the terminal to trigger conversion and playback.
  *
- * Examples:
- *   # 1. Capture for 5 seconds to a specific file:
- *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args \
- *     -p output_file:=/tmp/audio_capture.pcm -p capture_seconds:=5
+ * Parameters:
+ *   - output_file: Path to save the original 16kHz PCM file (Default: /tmp/audio_capture.pcm).
+ *   - capture_seconds: Duration of automated recording in seconds (Default: 5s).
  *
- *   # 2. Capture continuously until Ctrl+C is pressed:
- *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args \
- *     -p capture_seconds:=-1
- *
- *   # 3. Echo audio to speakers (loopback) and capture for 10 seconds:
- *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args \
- *     -p enable_playback:=true -p capture_seconds:=10
+ * Example:
+ *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args -p capture_seconds:=10
  */
 #include "aimdk_msgs/msg/audio_capture.hpp"
 #include "aimdk_msgs/msg/audio_playback.hpp"
@@ -34,297 +23,190 @@
 #include <fstream>
 #include <memory>
 #include <signal.h>
-#include <stdexcept>
 #include <string>
 #include <thread>
-#include <unistd.h>
+#include <vector>
+#include <iostream>
 
 using namespace std::chrono_literals;
 
 class AudioStreamSubscriber : public rclcpp::Node {
 public:
   AudioStreamSubscriber() : Node("get_audio_stream") {
-    output_file_ =
-        this->declare_parameter<std::string>("output_file", "/tmp/audio_capture.pcm");
+    output_file_ = this->declare_parameter<std::string>("output_file", "/tmp/audio_capture.pcm");
     capture_seconds_ = this->declare_parameter<int>("capture_seconds", 5);
-    enable_playback_ = this->declare_parameter<bool>("enable_playback", false);
 
-    file_enabled_ = !output_file_.empty();
-    if (file_enabled_ && !prepare_output_file()) {
+    if (!output_file_.empty() && !prepare_output_file()) {
       throw std::runtime_error("failed to open output file: " + output_file_);
     }
 
-    auto qos = rclcpp::QoS(rclcpp::KeepLast(20));
-    qos.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
+    auto qos = rclcpp::QoS(rclcpp::KeepLast(20)).reliable();
+    
+    // Playback publisher
+    pub_ = this->create_publisher<aimdk_msgs::msg::AudioPlayback>("/aima/hal/audio/playback", qos);
 
-    if (enable_playback_) {
-      pub_ = this->create_publisher<aimdk_msgs::msg::AudioPlayback>(
-          "/aima/hal/audio/playback", qos);
-      RCLCPP_INFO(this->get_logger(), "Audio playback loopback is ENABLED.");
-    }
-
+    // Capture subscription
     sub_ = this->create_subscription<aimdk_msgs::msg::AudioCapture>(
         "/aima/hal/audio/capture", qos,
-        std::bind(&AudioStreamSubscriber::on_audio_capture, this,
-                  std::placeholders::_1));
+        std::bind(&AudioStreamSubscriber::on_audio_capture, this, std::placeholders::_1));
 
-    timer_ = this->create_wall_timer(
-        200ms, std::bind(&AudioStreamSubscriber::check_auto_stop, this));
+    timer_ = this->create_wall_timer(200ms, std::bind(&AudioStreamSubscriber::check_auto_stop, this));
 
-    if (file_enabled_) {
-      RCLCPP_INFO(this->get_logger(), "PCM output file: %s",
-                  output_file_.c_str());
-    } else {
-      RCLCPP_INFO(this->get_logger(),
-                  "PCM output disabled because output_file is empty.");
-    }
+    RCLCPP_INFO(this->get_logger(), "PCM output file: %s", output_file_.c_str());
+  }
 
-    if (capture_seconds_ > 0) {
-      RCLCPP_INFO(this->get_logger(),
-                  "The node will stop %d second(s) after the first packet.",
-                  capture_seconds_);
-    } else {
-      RCLCPP_INFO(this->get_logger(),
-                  "Auto stop disabled. Press Ctrl+C to exit.");
+  void interactive_session() {
+    std::cout << "\n==================================================" << std::endl;
+    std::cout << "Capture done. Play back via robot? (y/n): ";
+    char choice;
+    std::cin >> choice;
+    if (choice == 'y' || choice == 'Y') {
+      process_and_play();
     }
   }
 
-  ~AudioStreamSubscriber() override {
-    close_output_file();
-    log_summary();
-  }
-
-  void request_shutdown(int signal) {
-    if (stop_requested_) {
-      return;
-    }
-    stop_requested_ = true;
-    close_output_file();
-    log_summary();
-    RCLCPP_INFO(this->get_logger(),
-                "Received signal %d, shutting down get_audio_stream...", signal);
-    rclcpp::shutdown();
-  }
+  bool capture_done_{false};
 
 private:
-  bool prepare_output_file() {
-    std::filesystem::path output_path(output_file_);
-    const auto parent = output_path.parent_path();
-
-    if (!parent.empty()) {
-      std::error_code ec;
-      std::filesystem::create_directories(parent, ec);
-      if (ec) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to create directory %s: %s",
-                     parent.string().c_str(), ec.message().c_str());
-        return false;
-      }
-    }
-
-    output_stream_.open(output_file_,
-                        std::ios::binary | std::ios::out | std::ios::trunc);
-    if (!output_stream_.is_open()) {
-      RCLCPP_ERROR(this->get_logger(), "Failed to open output file: %s",
-                   output_file_.c_str());
-      return false;
-    }
-
-    return true;
-  }
-
-  void close_output_file() {
-    if (output_stream_.is_open()) {
-      output_stream_.close();
-    }
-  }
-
   void on_audio_capture(const aimdk_msgs::msg::AudioCapture::SharedPtr msg) {
-    const std::size_t payload_bytes = msg->data.data.size();
-    ++message_count_;
-    total_bytes_ += payload_bytes;
+    if (capture_done_) return;
 
     if (!first_packet_received_) {
       first_packet_received_ = true;
       first_packet_time_ = std::chrono::steady_clock::now();
-      last_sample_rate_ = msg->info.sample_rate;
-      last_total_channels_ = msg->info.channels;
-      last_sample_format_ = msg->info.sample_format;
-      last_coding_format_ = msg->info.coding_format;
-      log_first_packet(*msg, payload_bytes);
+      last_info_ = msg->info;
+      RCLCPP_INFO(this->get_logger(), "Recording started (Channels: %d, Rate: %dHz)...", 
+                  static_cast<int>(last_info_.channels), last_info_.sample_rate);
     }
 
-    // Some publishers leave msg.info.size as 0, so use the actual payload size.
-    if (!size_mismatch_logged_ && msg->info.size != 0 &&
-        msg->info.size != payload_bytes) {
-      size_mismatch_logged_ = true;
-      RCLCPP_WARN(this->get_logger(),
-                  "AudioInfo.size=%u but actual payload is %zu bytes. The "
-                  "example will use msg.data.data.size().",
-                  msg->info.size, payload_bytes);
-    }
-
-    if (file_enabled_ && output_stream_.is_open() && payload_bytes > 0) {
-      output_stream_.write(reinterpret_cast<const char *>(msg->data.data.data()),
-                           static_cast<std::streamsize>(payload_bytes));
-      if (!output_stream_) {
-        RCLCPP_ERROR(this->get_logger(), "Failed while writing to %s",
-                     output_file_.c_str());
-        file_enabled_ = false;
-        close_output_file();
-      }
-    }
-
-    if (pub_) {
-      aimdk_msgs::msg::AudioPlayback playback_msg;
-      playback_msg.stamps = msg->stamps;
-      playback_msg.info = msg->info;
-      playback_msg.data = msg->data;
-      playback_msg.pkg_name = "get_audio_stream_loopback";
-      playback_msg.token_id = "loopback_session";
-      pub_->publish(playback_msg);
-    }
-
-    if (log_every_n_messages_ > 0 &&
-        message_count_ % static_cast<std::uint64_t>(log_every_n_messages_) ==
-            0) {
-      RCLCPP_INFO(this->get_logger(),
-                  "Received %llu packets, total_bytes=%llu, latest_payload=%zu",
-                  static_cast<unsigned long long>(message_count_),
-                  static_cast<unsigned long long>(total_bytes_), payload_bytes);
+    if (output_stream_.is_open()) {
+      output_stream_.write(reinterpret_cast<const char *>(msg->data.data.data()), 
+                           msg->data.data.size());
     }
   }
 
-  void log_first_packet(const aimdk_msgs::msg::AudioCapture &msg,
-                        std::size_t payload_bytes) {
-    RCLCPP_INFO(
-        this->get_logger(),
-        "First packet received: stamp=%d.%09u mic_channels=%u ref_channels=%u "
-        "total_channels=%u sample_rate=%u sample_format=%s coding_format=%s "
-        "mic_source=%u payload_bytes=%zu",
-        msg.stamps.sec, msg.stamps.nanosec,
-        static_cast<unsigned int>(msg.mic_channels),
-        static_cast<unsigned int>(msg.ref_channels),
-        static_cast<unsigned int>(msg.info.channels), msg.info.sample_rate,
-        msg.info.sample_format.c_str(),
-        msg.info.coding_format.c_str(), msg.mic_source, payload_bytes);
+  void process_and_play() {
+    std::string playback_file = output_file_;
+    size_t last_dot = playback_file.find_last_of(".");
+    if (last_dot != std::string::npos) {
+        playback_file.insert(last_dot, "_playback_24k");
+    } else {
+        playback_file += "_playback_24k.pcm";
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Optimizing: 16k -> 24k (Linear Interpolation)...");
+
+    std::ifstream fin(output_file_, std::ios::binary);
+    std::ofstream fout(playback_file, std::ios::binary);
+    
+    if (!fin || !fout) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to open files for conversion.");
+        return;
+    }
+
+    int stride = last_info_.channels * 2;
+    std::vector<char> buffer(stride * 2);
+
+    while (fin.read(buffer.data(), buffer.size())) {
+        // Extract Ch1 from two frames for interpolation
+        int16_t s1 = *reinterpret_cast<int16_t*>(&buffer[0]);
+        int16_t s2 = *reinterpret_cast<int16_t*>(&buffer[stride]);
+
+        int16_t s_mid = (s1 + s2) / 2;
+
+        // Write 3 samples (16k * 1.5 = 24k)
+        fout.write(reinterpret_cast<const char*>(&s1), 2);
+        fout.write(reinterpret_cast<const char*>(&s_mid), 2);
+        fout.write(reinterpret_cast<const char*>(&s2), 2);
+    }
+    fin.close();
+    fout.close();
+
+    RCLCPP_INFO(this->get_logger(), "Conversion done. Starting stream playback...");
+    stream_to_robot(playback_file);
+  }
+
+  void stream_to_robot(const std::string& path) {
+    while (pub_->get_subscription_count() == 0) {
+        if (!rclcpp::ok()) return;
+        std::this_thread::sleep_for(100ms);
+    }
+
+    std::ifstream f(path, std::ios::binary);
+    std::string token = "cpp_play_" + std::to_string(std::time(nullptr));
+    
+    // 24kHz Mono 100ms = 4800 bytes
+    std::vector<char> chunk(4800);
+    while (rclcpp::ok()) {
+        f.read(chunk.data(), chunk.size());
+        auto bytes_read = f.gcount();
+        if (bytes_read <= 0) break;
+
+        aimdk_msgs::msg::AudioPlayback msg;
+        msg.info.channels = 1;
+        msg.info.sample_rate = 24000;
+        msg.info.sample_format = "S16_LE";
+        msg.info.coding_format = "pcm";
+        msg.info.size = static_cast<uint32_t>(bytes_read);
+        msg.pkg_name = "get_audio_stream_cpp";
+        msg.token_id = token;
+        msg.stamps = this->get_clock()->now();
+        msg.data.data.assign(chunk.begin(), chunk.begin() + bytes_read);
+        
+        pub_->publish(msg);
+        std::this_thread::sleep_for(100ms);
+    }
   }
 
   void check_auto_stop() {
-    if (!first_packet_received_ || capture_seconds_ <= 0 || stop_requested_) {
-      return;
+    if (!first_packet_received_ || capture_done_) return;
+    auto elapsed = std::chrono::steady_clock::now() - first_packet_time_;
+    if (elapsed >= std::chrono::seconds(capture_seconds_)) {
+      capture_done_ = true;
+      output_stream_.close();
+      RCLCPP_INFO(this->get_logger(), "Capture finished. File saved to %s", output_file_.c_str());
     }
-
-    const auto elapsed = std::chrono::steady_clock::now() - first_packet_time_;
-    if (elapsed < std::chrono::seconds(capture_seconds_)) {
-      return;
-    }
-
-    stop_requested_ = true;
-    close_output_file();
-    log_summary();
-    RCLCPP_INFO(this->get_logger(),
-                "Reached capture_seconds=%d, shutting down.", capture_seconds_);
-    rclcpp::shutdown();
   }
 
-  void log_summary() {
-    if (summary_logged_) {
-      return;
-    }
-    summary_logged_ = true;
-
-    if (!first_packet_received_) {
-      RCLCPP_WARN(this->get_logger(),
-                  "No audio packet received before shutdown.");
-      return;
-    }
-
-    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                             std::chrono::steady_clock::now() -
-                             first_packet_time_)
-                             .count();
-
-    RCLCPP_INFO(
-        this->get_logger(),
-        "Audio stream summary: packets=%llu total_bytes=%llu elapsed=%lld ms "
-        "sample_rate=%u total_channels=%u sample_format=%s coding_format=%s",
-        static_cast<unsigned long long>(message_count_),
-        static_cast<unsigned long long>(total_bytes_),
-        static_cast<long long>(elapsed), last_sample_rate_,
-        static_cast<unsigned int>(last_total_channels_),
-        last_sample_format_.c_str(), last_coding_format_.c_str());
-
-    if (file_enabled_ || !output_file_.empty()) {
-      RCLCPP_INFO(this->get_logger(), "Captured PCM file: %s",
-                  output_file_.c_str());
-    }
+  bool prepare_output_file() {
+    std::filesystem::path p(output_file_);
+    if (!p.parent_path().empty()) std::filesystem::create_directories(p.parent_path());
+    output_stream_.open(output_file_, std::ios::binary | std::ios::trunc);
+    return output_stream_.is_open();
   }
 
   std::string output_file_;
-  int capture_seconds_{5};
-  int log_every_n_messages_{100};
-  bool file_enabled_{false};
+  int capture_seconds_;
   bool first_packet_received_{false};
-  bool size_mismatch_logged_{false};
-  bool stop_requested_{false};
-  bool summary_logged_{false};
-  bool enable_playback_{false};
-  std::uint64_t message_count_{0};
-  std::uint64_t total_bytes_{0};
-  std::uint32_t last_sample_rate_{0};
-  std::uint8_t last_total_channels_{0};
-  std::string last_sample_format_;
-  std::string last_coding_format_;
-  std::chrono::steady_clock::time_point first_packet_time_{};
+  aimdk_msgs::msg::AudioInfo last_info_;
   std::ofstream output_stream_;
+  std::chrono::steady_clock::time_point first_packet_time_;
   rclcpp::Subscription<aimdk_msgs::msg::AudioCapture>::SharedPtr sub_;
   rclcpp::Publisher<aimdk_msgs::msg::AudioPlayback>::SharedPtr pub_;
   rclcpp::TimerBase::SharedPtr timer_;
 };
 
-std::shared_ptr<rclcpp::Node> g_node = nullptr;
-
-void signal_handler(int signal) {
-  if (!rclcpp::ok()) {
-    return;
-  }
-  if (g_node) {
-    if (auto node = std::dynamic_pointer_cast<AudioStreamSubscriber>(g_node)) {
-      node->request_shutdown(signal);
-    } else {
-      RCLCPP_INFO(g_node->get_logger(),
-                  "Received signal %d, shutting down get_audio_stream...",
-                  signal);
-      rclcpp::shutdown();
-    }
-    g_node.reset();
-    return;
-  }
-  rclcpp::shutdown();
-}
-
 int main(int argc, char **argv) {
-  try {
-    rclcpp::init(argc, argv);
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-    auto node = std::make_shared<AudioStreamSubscriber>();
-    g_node = node;
-    rclcpp::spin(node);
-    
-    // Start a watchdog thread to force exit if cleanup hangs for more than 3s
-    std::thread([]() {
-      std::this_thread::sleep_for(std::chrono::seconds(3));
-      // Use _exit to bypass any remaining cleanup and force terminate
-      _exit(0);
-    }).detach();
+  rclcpp::init(argc, argv);
+  auto node = std::make_shared<AudioStreamSubscriber>();
+  
+  // Spin ROS logic in a separate thread so main can handle std::cin
+  std::thread ros_thread([&]() { rclcpp::spin(node); });
 
-    g_node.reset();
-    rclcpp::shutdown();
-    return 0;
-  } catch (const std::exception &e) {
-    RCLCPP_ERROR(rclcpp::get_logger("get_audio_stream"),
-                 "Program exited with exception: %s", e.what());
-    return 1;
+  // Main thread monitors capture status
+  while (rclcpp::ok()) {
+      if (node->capture_done_) {
+          node->interactive_session();
+          break;
+      }
+      std::this_thread::sleep_for(100ms);
   }
+
+  if (ros_thread.joinable()) {
+      // Small delay before shutdown to ensure final logs are flushed
+      std::this_thread::sleep_for(500ms);
+      rclcpp::shutdown();
+      ros_thread.join();
+  }
+  return 0;
 }
