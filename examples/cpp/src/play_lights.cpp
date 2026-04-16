@@ -72,13 +72,14 @@ public:
       }
 
       auto response = future.get();
-      const auto code = response->header.code;
-      const auto status_code = response->status_code;
+      
+      const auto code = response->header.header.code;  
+      const auto status_value = response->header.status.value; 
       RCLCPP_INFO(this->get_logger(),
-                  "Response: code=%ld, status_code=%u", code,
-                  static_cast<unsigned int>(status_code));
+                  "Response: code=%ld, status_value=%d", code,
+                  static_cast<int>(status_value));
 
-      if (code == 0 && status_code == 1) {
+      if (code == 0 && status_value == 1) {  // SUCCESS = 1
         RCLCPP_INFO(this->get_logger(),
                     "LedStripCommand request accepted.");
         return true;
