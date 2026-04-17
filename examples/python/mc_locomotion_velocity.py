@@ -1,12 +1,37 @@
 #!/usr/bin/env python3
 
+"""
+Example client for /aima/mc/locomotion/velocity.
+
+This script automatically handles the required state machine transitions for safety.
+Locomotion control (walking/running) requires the robot to be in BIPED_WALK_RUN mode.
+
+Prerequisites auto-handled by this script:
+  The script ensures a safe sequential transition path:
+  PASSIVE_DEFAULT -> BIPED_STAND_DEFAULT -> BIPED_WALK_RUN
+  Depending on the initial state, it enters the sequence at the appropriate step.
+
+Flow:
+  1. Detect current state and transition to BIPED_WALK_RUN sequentially.
+  2. Register this node as an authorized input source (priority 80).
+  3. Prompt the user for target velocities.
+  4. Publish velocity commands for 5 seconds.
+  5. Stop the robot by sending zero velocity.
+
+Usage:
+  python3 examples/python/mc_locomotion_velocity.py
+"""
+
 import time
 
 import rclpy
 from rclpy.node import Node
 
-from aimdk_msgs.msg import CommonRequest, McLocomotionVelocity, MessageHeader
-from aimdk_msgs.srv import GetCurrentInputSource, SetMcInputSource
+from aimdk_msgs.msg import (
+    CommonRequest, CommonState, McAction, McActionCommand, 
+    McActionStatus, McLocomotionVelocity, MessageHeader, RequestHeader
+)
+from aimdk_msgs.srv import GetCurrentInputSource, SetMcInputSource, GetMcAction, SetMcAction
 
 
 class DirectVelocityControl(Node):
@@ -21,6 +46,12 @@ class DirectVelocityControl(Node):
         )
         self.get_client = self.create_client(
             GetCurrentInputSource, "/aimdk_5Fmsgs/srv/GetCurrentInputSource"
+        )
+        self.set_action_client = self.create_client(
+            SetMcAction, "/aimdk_5Fmsgs/srv/SetMcAction"
+        )
+        self.get_action_client = self.create_client(
+            GetMcAction, "/aimdk_5Fmsgs/srv/GetMcAction"
         )
 
         self.forward_velocity = 0.0
@@ -44,6 +75,99 @@ class DirectVelocityControl(Node):
             if not rclpy.ok():
                 return False
             self.get_logger().info(f"Waiting for service: {service_name}")
+        return True
+
+    def wait_for_services(self) -> bool:
+        clients = [
+            (self.publisher, "/aima/mc/locomotion/velocity"),
+            (self.set_client, "/aimdk_5Fmsgs/srv/SetMcInputSource"),
+            (self.get_client, "/aimdk_5Fmsgs/srv/GetCurrentInputSource"),
+            (self.set_action_client, "/aimdk_5Fmsgs/srv/SetMcAction"),
+            (self.get_action_client, "/aimdk_5Fmsgs/srv/GetMcAction")
+        ]
+        for client, name in clients:
+            if hasattr(client, 'wait_for_service'):
+                if not self.wait_for_service(client, name):
+                    return False
+        return True
+
+    def get_action_status(self):
+        try:
+            request = GetMcAction.Request()
+            request.request = CommonRequest()
+            request.request.header.stamp = self.get_clock().now().to_msg()
+            future = self.get_action_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+            if not future.done(): return None, None, None
+            res = future.result()
+            if res is None: return None, None, None
+            return res.info.current_action.value, res.info.action_desc, res.info.status.value
+        except Exception as e:
+            self.get_logger().error(f"Error getting action status: {e}")
+            return None, None, None
+
+    def set_action(self, action_desc: str) -> bool:
+        try:
+            request = SetMcAction.Request()
+            request.header = RequestHeader()
+            request.header.stamp = self.get_clock().now().to_msg()
+            request.command = McActionCommand()
+            request.command.action = McAction()
+            request.command.action_desc = action_desc
+            
+            self.get_logger().info(f"Requesting state switch to: {action_desc}")
+            future = self.set_action_client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+            
+            if not future.done(): return False
+            res = future.result()
+            return res is not None and res.response.status.value == CommonState.SUCCESS
+        except Exception as e:
+            self.get_logger().error(f"Error calling SetMcAction: {e}")
+            return False
+
+    def wait_for_action(self, target_desc: str, timeout_sec: float = 10.0) -> bool:
+        deadline = time.monotonic() + timeout_sec
+        while time.monotonic() < deadline:
+            _, desc, status = self.get_action_status()
+            if desc == target_desc and status == McActionStatus.RUNNING:
+                self.get_logger().info(f"Robot successfully reached state: {target_desc}")
+                return True
+            time.sleep(0.5)
+        self.get_logger().error(f"Timeout waiting for state: {target_desc}")
+        return False
+
+    def ensure_ready_state(self) -> bool:
+        _, desc, status = self.get_action_status()
+        if desc == 'BIPED_WALK_RUN' and status == McActionStatus.RUNNING:
+            return True
+
+        self.get_logger().info(f"Current state is {desc}. Starting state machine transition sequence...")
+        
+        # Define the target sequence of states for walking
+        sequence = [
+            'PASSIVE_DEFAULT',
+            'BIPED_STAND_DEFAULT',
+            'BIPED_WALK_RUN'
+        ]
+        
+        # Determine starting point in the sequence
+        start_index = 0
+        if desc == 'PASSIVE_DEFAULT':
+            start_index = 1
+        elif desc == 'BIPED_STAND_DEFAULT':
+            start_index = 2
+        elif desc in ['DAMPING_DEFAULT', 'STORE_DEFAULT']:
+            start_index = 0
+        else:
+            start_index = 0
+            
+        # Execute the sequence from the determined start point
+        for i in range(start_index, len(sequence)):
+            target = sequence[i]
+            if not self.set_action(target) or not self.wait_for_action(target):
+                return False
+                
         return True
 
     def start_publish(self):
@@ -189,14 +313,22 @@ def main(args=None):
     node = DirectVelocityControl()
 
     try:
-        node.get_current_input_source()
+        if not node.wait_for_services():
+            return 1
 
+        # Step 1: Ensure the robot is in BIPED_WALK_RUN state
+        if not node.ensure_ready_state():
+            node.get_logger().error("Failed to prepare robot state for walking.")
+            return 1
+
+        # Step 2: Register input source
         if not node.register_input_source():
             node.get_logger().error("Input source registration failed, exiting")
             return 1
 
         # Input speed must be 0, or have an absolute value at least the minimum threshold.
         try:
+            print("\nEnter control velocities (forward and lateral in m/s, angular in rad/s):")
             forward = float(input("Enter forward speed 0 or +/- (0.1 ~ 2.0) m/s: "))
             lateral = float(input("Enter lateral speed 0 or +/- (0.3 ~ 1.0) m/s: "))
             angular = float(input("Enter angular speed 0 or +/- (0.8 ~ 2.5) rad/s: "))
@@ -232,6 +364,7 @@ def main(args=None):
             time.sleep(0.001)
 
         node.clear_velocity()
+        # Ensure zero velocity is published
         node.publish_velocity()
         node.get_logger().info("5 seconds elapsed; robot stopped")
         return 0

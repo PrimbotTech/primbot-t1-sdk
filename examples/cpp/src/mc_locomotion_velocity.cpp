@@ -1,3 +1,21 @@
+/**
+ * @brief Example client for /aima/mc/locomotion/velocity.
+ *
+ * This script automatically handles the required state machine transitions for safety.
+ * Locomotion control (walking/running) requires the robot to be in BIPED_WALK_RUN mode.
+ *
+ * Prerequisites auto-handled by this script:
+ *   The script ensures a safe sequential transition path:
+ *   PASSIVE_DEFAULT -> BIPED_STAND_DEFAULT -> BIPED_WALK_RUN
+ *   Depending on the initial state, it enters the sequence at the appropriate step.
+ *
+ * Flow:
+ *   1. Detect current state and transition to BIPED_WALK_RUN sequentially.
+ *   2. Register this node as an authorized input source (priority 80).
+ *   3. Prompt the user for target velocities.
+ *   4. Publish velocity commands for 5 seconds.
+ *   5. Stop the robot by sending zero velocity.
+ */
 #include "aimdk_msgs/msg/mc_locomotion_velocity.hpp"
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_response.hpp"
@@ -5,8 +23,14 @@
 #include "aimdk_msgs/msg/common_task_response.hpp"
 #include "aimdk_msgs/msg/mc_input_action.hpp"
 #include "aimdk_msgs/msg/message_header.hpp"
+#include "aimdk_msgs/msg/mc_action.hpp"
+#include "aimdk_msgs/msg/mc_action_command.hpp"
+#include "aimdk_msgs/msg/mc_action_status.hpp"
+#include "aimdk_msgs/msg/request_header.hpp"
 #include "aimdk_msgs/srv/get_current_input_source.hpp"
 #include "aimdk_msgs/srv/set_mc_input_source.hpp"
+#include "aimdk_msgs/srv/get_mc_action.hpp"
+#include "aimdk_msgs/srv/set_mc_action.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include <cmath>
@@ -15,6 +39,7 @@
 #include <memory>
 #include <signal.h>
 #include <thread>
+#include <vector>
 
 class DirectVelocityControl : public rclcpp::Node {
 public:
@@ -27,6 +52,10 @@ public:
         "/aimdk_5Fmsgs/srv/SetMcInputSource");
     get_client_ = this->create_client<aimdk_msgs::srv::GetCurrentInputSource>(
         "/aimdk_5Fmsgs/srv/GetCurrentInputSource");
+    set_action_client_ = this->create_client<aimdk_msgs::srv::SetMcAction>(
+        "/aimdk_5Fmsgs/srv/SetMcAction");
+    get_action_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
+        "/aimdk_5Fmsgs/srv/GetMcAction");
 
     // Maximum speed limits
     max_forward_speed_ = 2.0; // m/s
@@ -179,6 +208,112 @@ public:
     }
   }
 
+  struct ActionInfo {
+    std::string action_desc;
+    int32_t status = aimdk_msgs::msg::McActionStatus::IDLE;
+  };
+
+  bool get_action_status(ActionInfo &info) {
+    auto request = std::make_shared<aimdk_msgs::srv::GetMcAction::Request>();
+    request->request.header.stamp = this->now();
+    auto future = get_action_client_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(shared_from_this(), future,
+                                           std::chrono::seconds(2)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+      return false;
+
+    auto res = future.get();
+    if (!res) return false;
+    info.action_desc = res->info.action_desc;
+    info.status = res->info.status.value;
+    return true;
+  }
+
+  bool set_action(const std::string &desc) {
+    auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
+    request->header.stamp = this->now();
+    request->command.action_desc = desc;
+    RCLCPP_INFO(this->get_logger(), "Requesting state switch to: %s",
+                desc.c_str());
+    auto future = set_action_client_->async_send_request(request);
+    if (rclcpp::spin_until_future_complete(shared_from_this(), future,
+                                           std::chrono::seconds(2)) !=
+        rclcpp::FutureReturnCode::SUCCESS)
+      return false;
+
+    auto res = future.get();
+    return res && res->response.status.value ==
+                      aimdk_msgs::msg::CommonState::SUCCESS;
+  }
+
+  bool wait_for_action(const std::string &target,
+                       std::chrono::seconds timeout = std::chrono::seconds(10)) {
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+      ActionInfo info;
+      if (get_action_status(info) && info.action_desc == target &&
+          info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+        RCLCPP_INFO(this->get_logger(), "Robot reached state: %s",
+                    target.c_str());
+        return true;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+    return false;
+  }
+
+  bool ensure_ready_state() {
+    ActionInfo info;
+    if (get_action_status(info) && info.action_desc == "BIPED_WALK_RUN" &&
+        info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+      return true;
+    }
+
+    RCLCPP_INFO(this->get_logger(),
+                "Current state is %s. Starting state machine transition sequence...",
+                info.action_desc.c_str());
+
+    std::vector<std::string> sequence = {
+      "PASSIVE_DEFAULT",
+      "BIPED_STAND_DEFAULT",
+      "BIPED_WALK_RUN"
+    };
+
+    size_t start_index = 0;
+    if (info.action_desc == "PASSIVE_DEFAULT") {
+        start_index = 1;
+    } else if (info.action_desc == "BIPED_STAND_DEFAULT") {
+        start_index = 2;
+    } else if (info.action_desc == "DAMPING_DEFAULT" || info.action_desc == "STORE_DEFAULT") {
+        start_index = 0;
+    } else {
+        start_index = 0;
+    }
+
+    for (size_t i = start_index; i < sequence.size(); ++i) {
+        if (!set_action(sequence[i]) || !wait_for_action(sequence[i])) {
+            return false;
+        }
+    }
+
+    return true;
+  }
+
+  void wait_for_services() {
+    auto wait = [this](auto &client, const std::string &name) {
+      while (!client->wait_for_service(std::chrono::seconds(2))) {
+        if (!rclcpp::ok())
+          return;
+        RCLCPP_INFO(this->get_logger(), "Waiting for service %s...",
+                    name.c_str());
+      }
+    };
+    wait(set_client_, "/aimdk_5Fmsgs/srv/SetMcInputSource");
+    wait(get_client_, "/aimdk_5Fmsgs/srv/GetCurrentInputSource");
+    wait(set_action_client_, "/aimdk_5Fmsgs/srv/SetMcAction");
+    wait(get_action_client_, "/aimdk_5Fmsgs/srv/GetMcAction");
+  }
+
 private:
   template <typename ClientT>
   bool wait_for_service(const std::shared_ptr<ClientT> &client,
@@ -196,6 +331,8 @@ private:
       publisher_;
   rclcpp::Client<aimdk_msgs::srv::SetMcInputSource>::SharedPtr set_client_;
   rclcpp::Client<aimdk_msgs::srv::GetCurrentInputSource>::SharedPtr get_client_;
+  rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr set_action_client_;
+  rclcpp::Client<aimdk_msgs::srv::GetMcAction>::SharedPtr get_action_client_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   double forward_velocity_;
@@ -233,8 +370,17 @@ int main(int argc, char *argv[]) {
   g_node = std::make_shared<DirectVelocityControl>();
   auto node = g_node;
 
-  node->get_current_input_source();
-  
+  node->wait_for_services();
+
+  // Step 1: Ensure the robot is in BIPED_WALK_RUN state
+  if (!node->ensure_ready_state()) {
+    RCLCPP_ERROR(node->get_logger(), "Failed to prepare robot state for walking.");
+    g_node.reset();
+    rclcpp::shutdown();
+    return 1;
+  }
+
+  // Step 2: Register input source
   if (!node->register_input_source()) {
     RCLCPP_ERROR(node->get_logger(),
                  "Input source registration failed, exiting");
