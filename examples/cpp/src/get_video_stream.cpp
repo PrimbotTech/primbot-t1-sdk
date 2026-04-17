@@ -38,7 +38,7 @@
 
 namespace {
 
-constexpr char kRtspUrl[] = "rtsp://172.31.10.16:2554/live";
+constexpr char kRtspUrl[] = "rtsp://{ip}:2554/live_head_monocular_centra";
 constexpr char kDefaultOutputFile[] = "/tmp/video_capture.mp4";
 constexpr double kDefaultCaptureSeconds = 5.0;
 constexpr int kLogEveryNFrames = 100;

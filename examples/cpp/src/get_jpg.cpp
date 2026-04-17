@@ -6,6 +6,7 @@
  *
  * Supported parameters:
  *   - service_name: CaptureJpegImage service name
+ *   - camera_id: camera identifier (optional)
  *   - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
  *     follow the server default.
  *   - output_file: local JPEG output path. Leave empty to auto-generate one.
@@ -18,6 +19,7 @@
  *
  *   ros2 run aimdk_examples_cpp get_jpg --ros-args \
  *     -p service_name:=/aima/hal/camera/bgr_5Fcamera_5Fr/capture_5Fjpeg \
+ *     -p camera_id:=camera_001 \
  *     -p timeout_ms:=0
  */
 #include "aimdk_msgs/msg/common_request.hpp"
@@ -78,6 +80,8 @@ public:
   CaptureJpegClient() : Node("get_jpg") {
     service_name_ =
         this->declare_parameter<std::string>("service_name", kDefaultServiceName);
+    camera_id_ =
+        this->declare_parameter<std::string>("camera_id", "");
     timeout_ms_ =
         this->declare_parameter<int>("timeout_ms", kDefaultRequestTimeoutMs);
     output_file_ = this->declare_parameter<std::string>("output_file", "");
@@ -95,9 +99,10 @@ public:
         service_name_);
 
     RCLCPP_INFO(this->get_logger(),
-                "CaptureJpegImage client created. service=%s timeout_ms=%d "
-                "output_file=%s",
-                service_name_.c_str(), timeout_ms_,
+                "CaptureJpegImage client created. service=%s camera_id=%s "
+                "timeout_ms=%d output_file=%s",
+                service_name_.c_str(), camera_id_.empty() ? "(default)" : camera_id_.c_str(),
+                timeout_ms_,
                 output_path_.string().c_str());
   }
 
@@ -110,10 +115,12 @@ public:
         std::make_shared<aimdk_msgs::srv::CaptureJpegImage::Request>();
     request->request = aimdk_msgs::msg::CommonRequest();
     request->request.header.stamp = this->now();
+    request->camera_id = camera_id_;
     request->timeout_ms = static_cast<std::uint32_t>(timeout_ms_);
 
     RCLCPP_INFO(this->get_logger(),
-                "Sending CaptureJpegImage request: timeout_ms=%u",
+                "Sending CaptureJpegImage request: camera_id=%s timeout_ms=%u",
+                camera_id_.empty() ? "(default)" : camera_id_.c_str(),
                 request->timeout_ms);
 
     auto future = client_->async_send_request(request);
@@ -222,6 +229,7 @@ private:
   }
 
   std::string service_name_;
+  std::string camera_id_;
   int timeout_ms_{kDefaultRequestTimeoutMs};
   std::string output_file_;
   std::filesystem::path output_path_;

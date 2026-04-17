@@ -4,7 +4,7 @@
 Example reader for the fixed RTSP video stream.
 
 RTSP URL:
-  rtsp://172.31.10.16:2554/live
+  rtsp://{ip}:2554/live_head_monocular_centra
 
 Default MP4 output:
   /tmp/video_capture.mp4
@@ -30,7 +30,7 @@ import sys
 import time
 from typing import Any
 
-RTSP_URL = "rtsp://172.31.11.79:2554/live"
+RTSP_URL = "rtsp://{ip}:2554/live_head_monocular_centra"
 DEFAULT_OUTPUT_FILE = "/tmp/video_capture.mp4"
 DEFAULT_CAPTURE_SECONDS = 5.0
 DEFAULT_LOG_EVERY_N_FRAMES = 100
