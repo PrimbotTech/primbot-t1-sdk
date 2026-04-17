@@ -98,7 +98,21 @@ class SetMcPresetMotionClient(Node):
         return False
 
     def ensure_ready_state(self) -> bool:
-        _, desc, status = self.get_action_status()
+        deadline = time.monotonic() + 5.0
+        _, desc, status = None, None, None
+        
+        # Retry querying the status up to 5 seconds if it returns None
+        while time.monotonic() < deadline:
+            _, desc, status = self.get_action_status()
+            if desc is not None:
+                break
+            self.get_logger().warning('Current action state is None, retrying...')
+            time.sleep(0.5)
+
+        if desc is None:
+            self.get_logger().error('Failed to get valid action state after 5 seconds. Aborting for safety.')
+            return False
+
         if desc == 'BIPED_WHOLE_BODY_CTRL' and status == McActionStatus.RUNNING:
             return True
 

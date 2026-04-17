@@ -170,7 +170,26 @@ private:
 
   bool ensure_ready_state() {
     ActionInfo info;
-    if (get_action_status(info) && info.action_desc == "BIPED_WHOLE_BODY_CTRL" &&
+    
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    bool status_ok = false;
+    
+    // Retry querying the status up to 5 seconds
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (get_action_status(info)) {
+        status_ok = true;
+        break;
+      }
+      RCLCPP_WARN(this->get_logger(), "Current action state is unavailable, retrying...");
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+
+    if (!status_ok) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to get valid action state after 5 seconds. Aborting for safety.");
+      return false;
+    }
+
+    if (info.action_desc == "BIPED_WHOLE_BODY_CTRL" &&
         info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
       return true;
     }
