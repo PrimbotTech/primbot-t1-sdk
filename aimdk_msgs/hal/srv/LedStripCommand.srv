@@ -44,7 +44,4 @@ uint16 period
 
 
 # 响应头
-ResponseHeader header
-
-# 设置是否成功，1-成功，0-失败
-uint16 status_code
+CommonResponse header

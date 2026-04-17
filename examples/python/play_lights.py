@@ -57,13 +57,14 @@ class PlayLightsClient(Node):
                 self.get_logger().error("LedStripCommand service call failed.")
                 return False
 
-            code = response.header.code
-            status_code = response.status_code
+            code = response.header.header.code  
+            status_value = response.header.status.value 
+            # 打印响应信息
             self.get_logger().info(
-                f"Response: code={code}, status_code={status_code}"
+                f"Response: code={code}, status_value={status_value}"
             )
 
-            if code == 0 and status_code == 1:
+            if code == 0 and status_value == 1:  # 判断是否成功
                 self.get_logger().info("LedStripCommand request accepted.")
                 return True
 
