@@ -43,7 +43,7 @@
 namespace {
 
 constexpr char kDefaultServiceName[] =
-    "/aima/hal/camera/bgr_5Fcamera_5Fl/capture_5Fjpeg";
+    "/aima/hal/camera/CaptureJpegImage";
 constexpr char kDefaultOutputFile[] = "/tmp/camera_capture.jpg";
 constexpr int kDefaultRequestTimeoutMs = 5000;
 constexpr int kServiceWaitSeconds = 2;

@@ -34,7 +34,7 @@ from aimdk_msgs.msg import CommonRequest, CommonState
 from aimdk_msgs.srv import CaptureJpegImage
 
 
-DEFAULT_SERVICE_NAME = "/aima/hal/camera/bgr_5Fcamera_5Fl/capture_5Fjpeg"
+DEFAULT_SERVICE_NAME = "/aima/hal/camera/CaptureJpegImage"
 DEFAULT_OUTPUT_FILE = "/tmp/camera_capture.jpg"
 DEFAULT_REQUEST_TIMEOUT_MS = 5000
 SERVICE_WAIT_SECONDS = 2.0
