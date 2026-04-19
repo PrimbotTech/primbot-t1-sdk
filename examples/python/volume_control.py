@@ -242,8 +242,8 @@ class VolumeControlClient(Node):
 
         steps = [
             lambda: self.execute_volume_step(30, "设为默认音量"),
-            lambda: self.execute_volume_step(40, "音量调小"),
-            lambda: self.execute_volume_step(20, "音量调大"),
+            lambda: self.execute_volume_step(40, "音量调大"),
+            lambda: self.execute_volume_step(20, "音量调小"),
             lambda: self.execute_mute_step(True, "设置静音"),
             lambda: self.execute_mute_step(False, "取消静音"),
         ]
