@@ -139,6 +139,21 @@ class DirectVelocityControl(Node):
 
     def ensure_ready_state(self) -> bool:
         _, desc, status = self.get_action_status()
+        
+        # Safety margin: If initial state is None, poll for up to 5s to recover communication
+        if desc is None:
+            self.get_logger().warning("Initial action status is None. Retrying for up to 5 seconds...")
+            deadline = time.monotonic() + 5.0
+            while time.monotonic() < deadline:
+                time.sleep(0.5)
+                _, desc, status = self.get_action_status()
+                if desc is not None:
+                    self.get_logger().info(f"Successfully recovered action status: {desc}")
+                    break
+            
+            if desc is None:
+                self.get_logger().error("Action status remained None after 5 seconds of polling.")
+
         if desc == 'BIPED_WALK_RUN' and status == McActionStatus.RUNNING:
             return True
 
