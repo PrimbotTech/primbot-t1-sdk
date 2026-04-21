@@ -1,23 +1,30 @@
 /**
- * @brief Example reader for the fixed RTSP video stream.
+ * @brief Example reader for the RTSP video stream.
  *
- * RTSP URL:
- *   rtsp://172.31.10.16:2554/live
+ * Supported Cameras:
+ *   head_monocular_centra  - Q model interactive camera
+ *   head_stereo_left       - T model left stereo camera
+ *   head_stereo_right      - T model right stereo camera
+ *
+ * RTSP URL Format:
+ *   rtsp://{ip}:2554/live_{camera_id}
  *
  * Default MP4 output:
  *   /tmp/video_capture.mp4
  *
  * Supported arguments:
- *   --output_file: MP4 output path.
- *   --capture_seconds: stop automatically after the first frame arrives and
+ *   --camera_id, --camera: Camera identifier (interactive prompt if not provided)
+ *   --robot_ip, --ip: Robot IP address (interactive prompt if not provided)
+ *   --output_file, --output: MP4 output path.
+ *   --capture_seconds, --duration: stop automatically after the first frame arrives and
  *     this many seconds have elapsed. Set <= 0 to run until Ctrl+C.
  *
+ * Interactive Mode:
+ *   If --camera or --ip is not provided, the program will prompt for input.
+ *   Press Enter to use the default values shown in brackets.
+ *
  * Examples:
- *   ros2 run aimdk_examples_cpp get_video_stream --output_file /tmp/live.mp4
- *
- *   ros2 run aimdk_examples_cpp get_video_stream --capture_seconds 5
- *
- *   ros2 run aimdk_examples_cpp get_video_stream --capture_seconds 0
+ *   ros2 run aimdk_examples_cpp get_video_stream
  */
 
 #include <opencv2/core.hpp>
@@ -38,7 +45,7 @@
 
 namespace {
 
-constexpr char kRtspUrl[] = "rtsp://{ip}:2554/live_head_monocular_centra";
+constexpr char kRtspUrl[] = "rtsp://{ip}:2554/live_{camera_id}";
 constexpr char kDefaultOutputFile[] = "/tmp/video_capture.mp4";
 constexpr double kDefaultCaptureSeconds = 5.0;
 constexpr int kLogEveryNFrames = 100;
@@ -52,6 +59,8 @@ std::atomic<bool> g_stop_requested{false};
 struct Options {
   std::string output_file{kDefaultOutputFile};
   double capture_seconds{kDefaultCaptureSeconds};
+  std::string camera_id{""};
+  std::string robot_ip{"10.1.1.100"};
 };
 
 std::string format_double(double value) {
@@ -63,16 +72,21 @@ std::string format_double(double value) {
 void print_usage(const char *program) {
   std::cout
       << "Usage: " << program
+      << " [--camera_id CAMERA_ID] [--robot_ip ROBOT_IP]"
       << " [--output_file OUTPUT_FILE] [--capture_seconds CAPTURE_SECONDS]\n\n"
-      << "Read decoded frames from the fixed RTSP stream and save MP4.\n\n"
+      << "Read decoded frames from the RTSP stream and save MP4.\n\n"
       << "Options:\n"
       << "  -h, --help                  Show this help message and exit.\n"
+      << "  --camera_id CAMERA_ID       Camera identifier (e.g., head_monocular_centra).\n"
+      << "  --camera CAMERA_ID          Alias of --camera_id.\n"
+      << "  --robot_ip ROBOT_IP         Robot IP address (e.g., 10.1.1.100).\n"
+      << "  --ip ROBOT_IP               Alias of --robot_ip.\n"
       << "  --output_file OUTPUT_FILE   Output MP4 file path.\n"
       << "  --output OUTPUT_FILE        Alias of --output_file.\n"
       << "  --capture_seconds SEC       Stop automatically after this many\n"
       << "                              seconds. Use <= 0 to run forever.\n"
       << "  --duration SEC              Alias of --capture_seconds.\n\n"
-      << "Fixed RTSP URL: " << kRtspUrl << "\n"
+      << "RTSP URL Format: " << kRtspUrl << "\n"
       << "Default MP4 output: " << kDefaultOutputFile << '\n';
 }
 
@@ -94,6 +108,49 @@ double parse_double(const std::string &text, const std::string &option_name) {
   return value;
 }
 
+std::string prompt_input(const std::string &message, const std::string &default_value) {
+  std::cout << "\n" << message << " [" << default_value << "]: ";
+  std::string input;
+  std::getline(std::cin, input);
+  
+  if (input.empty()) {
+    return default_value;
+  }
+  
+  // Trim whitespace
+  size_t start = input.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    return default_value;
+  }
+  size_t end = input.find_last_not_of(" \t\r\n");
+  return input.substr(start, end - start + 1);
+}
+
+void print_camera_list() {
+  std::cout << "Available camera IDs:" << std::endl;
+  std::cout << "  - head_monocular_centra: Q model interactive camera" << std::endl;
+  std::cout << "  - head_stereo_left: T model left stereo camera" << std::endl;
+  std::cout << "  - head_stereo_right: T model right stereo camera" << std::endl;
+}
+
+std::string build_rtsp_url(const std::string &ip, const std::string &camera_id) {
+  std::string url = kRtspUrl;
+  
+  // Replace {ip}
+  size_t ip_pos = url.find("{ip}");
+  if (ip_pos != std::string::npos) {
+    url.replace(ip_pos, 4, ip);
+  }
+  
+  // Replace {camera_id}
+  size_t camera_pos = url.find("{camera_id}");
+  if (camera_pos != std::string::npos) {
+    url.replace(camera_pos, 11, camera_id);
+  }
+  
+  return url;
+}
+
 Options parse_args(int argc, char **argv) {
   Options options;
 
@@ -103,6 +160,36 @@ Options parse_args(int argc, char **argv) {
     if (argument == "-h" || argument == "--help") {
       print_usage(argv[0]);
       std::exit(0);
+    }
+
+    if (argument == "--camera_id" || argument == "--camera") {
+      options.camera_id = require_value(argc, argv, &i, argument);
+      continue;
+    }
+
+    if (argument.rfind("--camera_id=", 0) == 0) {
+      options.camera_id = argument.substr(std::string("--camera_id=").size());
+      continue;
+    }
+
+    if (argument.rfind("--camera=", 0) == 0) {
+      options.camera_id = argument.substr(std::string("--camera=").size());
+      continue;
+    }
+
+    if (argument == "--robot_ip" || argument == "--ip") {
+      options.robot_ip = require_value(argc, argv, &i, argument);
+      continue;
+    }
+
+    if (argument.rfind("--robot_ip=", 0) == 0) {
+      options.robot_ip = argument.substr(std::string("--robot_ip=").size());
+      continue;
+    }
+
+    if (argument.rfind("--ip=", 0) == 0) {
+      options.robot_ip = argument.substr(std::string("--ip=").size());
+      continue;
     }
 
     if (argument == "--output_file" || argument == "--output") {
@@ -142,6 +229,17 @@ Options parse_args(int argc, char **argv) {
     throw std::invalid_argument("unknown argument: " + argument);
   }
 
+  // Interactive input for robot_ip if not provided
+  if (options.robot_ip.empty()) {
+    options.robot_ip = prompt_input("Please enter robot IP address", "10.1.1.100");
+  }
+
+  // Interactive input for camera_id if not provided
+  if (options.camera_id.empty()) {
+    print_camera_list();
+    options.camera_id = prompt_input("Please enter camera ID", "head_monocular_centra");
+  }
+
   if (options.output_file.empty()) {
     throw std::invalid_argument("output_file must not be empty");
   }
@@ -156,6 +254,9 @@ public:
   explicit RtspVideoStreamReader(const Options &options)
       : output_file_(options.output_file),
         capture_seconds_(options.capture_seconds),
+        camera_id_(options.camera_id),
+        robot_ip_(options.robot_ip),
+        rtsp_url_(build_rtsp_url(robot_ip_, camera_id_)),
         output_path_(prepare_output_file(output_file_)) {}
 
   ~RtspVideoStreamReader() {
@@ -221,7 +322,7 @@ private:
           cv::CAP_PROP_OPEN_TIMEOUT_MSEC, kOpenTimeoutMs,
           cv::CAP_PROP_READ_TIMEOUT_MSEC, kReadTimeoutMs,
       };
-      const bool opened = capture_.open(kRtspUrl, api_preference, open_params);
+      const bool opened = capture_.open(rtsp_url_, api_preference, open_params);
       cv::utils::logging::setLogLevel(previous_log_level);
       if (!opened || !capture_.isOpened()) {
         capture_.release();
@@ -257,7 +358,7 @@ private:
     }
 
     throw std::runtime_error(std::string("Failed to open RTSP stream: ") +
-                             kRtspUrl);
+                             rtsp_url_);
   }
 
   static bool is_valid_fps(double value) {
@@ -410,6 +511,9 @@ private:
 
   std::string output_file_;
   double capture_seconds_{kDefaultCaptureSeconds};
+  std::string camera_id_;
+  std::string robot_ip_;
+  std::string rtsp_url_;
   std::filesystem::path output_path_;
   cv::VideoCapture capture_;
   cv::VideoWriter output_writer_;

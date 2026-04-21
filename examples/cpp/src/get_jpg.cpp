@@ -6,21 +6,24 @@
  *
  * Supported parameters:
  *   - service_name: CaptureJpegImage service name
- *   - camera_id: camera identifier (optional)
+ *   - camera_id: Camera identifier (interactive prompt if not provided)
+ *     Available values:
+ *       - head_monocular_centra: Q model interactive camera
+ *       - head_stereo_left: T model left stereo camera
+ *       - head_stereo_right: T model right stereo camera
  *   - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
  *     follow the server default.
  *   - output_file: local JPEG output path. Leave empty to auto-generate one.
  *
+ * Interactive Mode:
+ *   If camera_id is not provided via -p camera_id:=<value>,
+ *   the program will prompt for input. Press Enter to use the default value.
+ *
  * Examples:
- *   ros2 run aimdk_examples_cpp get_jpg
- *
+ *   # Interactive mode (will prompt for camera_id)
  *   ros2 run aimdk_examples_cpp get_jpg --ros-args \
- *     -p output_file:=/tmp/camera_left.jpg
+ *     -p output_file:=/tmp/camera_capture.jpg
  *
- *   ros2 run aimdk_examples_cpp get_jpg --ros-args \
- *     -p service_name:=/aima/hal/camera/bgr_5Fcamera_5Fr/capture_5Fjpeg \
- *     -p camera_id:=camera_001 \
- *     -p timeout_ms:=0
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
@@ -34,6 +37,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <signal.h>
 #include <stdexcept>
@@ -50,6 +54,23 @@ constexpr int kServiceWaitSeconds = 2;
 constexpr int kMinCallTimeoutMs = 6000;
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
+
+std::string prompt_camera_id(const std::string &default_value) {
+  std::cout << "Available camera IDs:" << std::endl;
+  std::cout << "  - head_monocular_centra: Q model interactive camera" << std::endl;
+  std::cout << "  - head_stereo_left: T model left stereo camera" << std::endl;
+  std::cout << "  - head_stereo_right: T model right stereo camera" << std::endl;
+  std::cout << "Please enter camera ID : ";
+  std::string input;
+  std::getline(std::cin, input);
+  
+  size_t start = input.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    return default_value;
+  }
+  size_t end = input.find_last_not_of(" \t\r\n");
+  return input.substr(start, end - start + 1);
+}
 
 std::filesystem::path prepare_output_path(const std::string &output_file) {
   std::filesystem::path output_path(
@@ -85,6 +106,11 @@ public:
     timeout_ms_ =
         this->declare_parameter<int>("timeout_ms", kDefaultRequestTimeoutMs);
     output_file_ = this->declare_parameter<std::string>("output_file", "");
+
+    if (camera_id_.empty()) {
+      camera_id_ = prompt_camera_id("head_monocular_centra");
+      std::cout << std::endl;
+    }
 
     if (service_name_.empty()) {
       throw std::invalid_argument("service_name must not be empty.");

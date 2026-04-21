@@ -1,27 +1,31 @@
 #!/usr/bin/env python3
 
-
-"""
-Example client for CaptureJpegImage service.
+"""Example client for CaptureJpegImage service.
 
 The following ROS parameters can be set via startup arguments:
 --ros-args -p <name>:=<value>
 
 Supported parameters:
   - service_name: CaptureJpegImage service name
-  - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
+  - camera_id: Camera identifier
+    Available values:
+      - head_monocular_centra: Q model interactive camera
+      - head_stereo_left: T model left stereo camera
+      - head_stereo_right: T model right stereo camera
+    (Interactive prompt if not provided)
+  - timeout_ms: Wait time for a fresh JPEG frame, in milliseconds. Use 0 to
     follow the server default.
-  - output_file: local JPEG output path. Leave empty to auto-generate one.
+  - output_file: Local JPEG output path. Leave empty to auto-generate one.
+
+Interactive Mode:
+  If camera_id is not provided via --ros-args -p camera_id:=<value>,
+  the script will prompt for input. Press Enter to use the default value.
 
 Examples:
-  python3 /workspace/sdk/examples/python/get_jpg.py
 
+  # Interactive mode (will prompt for camera_id)
   python3 /workspace/sdk/examples/python/get_jpg.py --ros-args \
-    -p output_file:=/tmp/camera_left.jpg
-
-  python3 /workspace/sdk/examples/python/get_jpg.py --ros-args \
-    -p service_name:=/aima/hal/camera/bgr_5Fcamera_5Fr/capture_5Fjpeg \
-    -p timeout_ms:=0
+    -p output_file:=/tmp/camera.jpg
 """
 
 from pathlib import Path
@@ -32,6 +36,7 @@ from rclpy.node import Node
 
 from aimdk_msgs.msg import CommonRequest, CommonState
 from aimdk_msgs.srv import CaptureJpegImage
+
 
 
 DEFAULT_SERVICE_NAME = "/aima/hal/camera/CaptureJpegImage"
@@ -54,18 +59,25 @@ class CaptureJpegClient(Node):
     def __init__(self) -> None:
         super().__init__("get_jpg")
 
-
         self.service_name = self.declare_parameter(
             "service_name", DEFAULT_SERVICE_NAME
         ).value
-
         self.timeout_ms = self.declare_parameter(
             "timeout_ms", DEFAULT_REQUEST_TIMEOUT_MS
         ).value
+        self.output_file = self.declare_parameter("output_file", "").value 
+        self.camera_id = self.declare_parameter("camera_id", "").value  
 
-        self.output_file = self.declare_parameter("output_file", "").value
+        if not self.camera_id:
+            print("Available camera IDs:")
+            print("  - head_monocular_centra: Q model interactive camera")
+            print("  - head_stereo_left: T model left stereo camera")
+            print("  - head_stereo_right: T model right stereo camera")
+            self.camera_id = input("Please enter camera ID : ").strip()
+            if not self.camera_id:
+                self.camera_id = "head_monocular_centra"
+            print()  
 
-        self.camera_id = self.declare_parameter("camera_id", "").value
 
         if not self.service_name:
             raise ValueError("service_name must not be empty.")
@@ -76,10 +88,11 @@ class CaptureJpegClient(Node):
         self.output_path = prepare_output_path(self.output_file)
         self.client = self.create_client(CaptureJpegImage, self.service_name)
 
-
+        # 打印客户端创建成功日志
         self.get_logger().info(
             "CaptureJpegImage client created. "
             f"service={self.service_name} "
+            f"camera_id={self.camera_id} "
             f"timeout_ms={self.timeout_ms} "
             f"output_file={self.output_path}"
         )
@@ -102,7 +115,6 @@ class CaptureJpegClient(Node):
         request.request.header.stamp = self.get_clock().now().to_msg()
         request.camera_id = self.camera_id
         request.timeout_ms = self.timeout_ms
-
 
         self.get_logger().info(
             f"Sending CaptureJpegImage request: timeout_ms={request.timeout_ms}"
@@ -148,7 +160,6 @@ class CaptureJpegClient(Node):
             self.get_logger().error(f"Failed to write JPEG file: {self.output_path}")
             return False
 
-
         self.get_logger().info(
             "JPEG saved: "
             f"file={self.output_path} "
@@ -171,7 +182,7 @@ def main(args=None) -> int:
     try:
         node = CaptureJpegClient()
         return 0 if node.capture_once() else 1
-    except Exception as error:
+    except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("get_jpg").error(
             f"Program exited with exception: {error}"
         )
