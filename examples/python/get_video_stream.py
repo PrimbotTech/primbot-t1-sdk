@@ -1,11 +1,6 @@
 #!/usr/bin/env python3
 
 """RTSP Video Stream Reader Example
-
-Supported Cameras:
-  head_monocular_centra  - Q model interactive camera
-  head_stereo_left       - T model left stereo camera
-  head_stereo_right      - T model right stereo camera
   
 RTSP URL Format:
   rtsp://{ip}:2554/live_{camera_id}
@@ -98,19 +93,18 @@ def parse_args() -> argparse.Namespace:
     
     if args.robot_ip is None:
         print()
+        print("robot_ip is required. Please provide it via command line argument.")
         args.robot_ip = input("Please enter robot IP address : ").strip()
         if not args.robot_ip:
-            args.robot_ip = "10.1.1.100" 
+            sys.exit(1) 
     
     if args.camera_id is None:
         print()
-        print("Available camera IDs:")
-        print("  - head_monocular_centra: Q model interactive camera")
-        print("  - head_stereo_left: T model left stereo camera")
-        print("  - head_stereo_right: T model right stereo camera")
+        print("camera_id is required. Please provide it via command line argument.")
+        print("Please refer to the interface description for available camera IDs")
         args.camera_id = input("Please enter camera ID : ").strip()
         if not args.camera_id:
-            args.camera_id = "head_monocular_centra" 
+            sys.exit(1)
     
     return args
 

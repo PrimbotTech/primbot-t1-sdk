@@ -22,7 +22,7 @@ class PlayAudioFileClient(Node):
     def __init__(self):
         super().__init__("play_audio_file_client")
         self.file_name = self.declare_parameter("file_name", "撒娇.wav").value
-        self.file_path = self.declare_parameter("file_path", "/agibot/software/interaction/bin/cfg").value
+        self.file_path = self.declare_parameter("file_path", "/robot/software/aimrt_agent/bin/cfg/q1/audio").value
 
         self.service_name = "/aimdk_5Fmsgs/srv/PlayAudioFile"
         self.pkg_name = "sdk_demo"

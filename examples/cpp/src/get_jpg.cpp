@@ -7,10 +7,11 @@
  * Supported parameters:
  *   - service_name: CaptureJpegImage service name
  *   - camera_id: Camera identifier (interactive prompt if not provided)
- *     Available values:
- *       - head_monocular_centra: Q model interactive camera
- *       - head_stereo_left: T model left stereo camera
- *       - head_stereo_right: T model right stereo camera
+      *   - Available camera_id options:
+      *     - head_monocular_centra
+      *     - head_stereo_left
+      *     - head_stereo_right
+      *     For details, please refer to the interface documentation.
  *   - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
  *     follow the server default.
  *   - output_file: local JPEG output path. Leave empty to auto-generate one.
@@ -55,21 +56,29 @@ constexpr int kMinCallTimeoutMs = 6000;
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
-std::string prompt_camera_id(const std::string &default_value) {
-  std::cout << "Available camera IDs:" << std::endl;
-  std::cout << "  - head_monocular_centra: Q model interactive camera" << std::endl;
-  std::cout << "  - head_stereo_left: T model left stereo camera" << std::endl;
-  std::cout << "  - head_stereo_right: T model right stereo camera" << std::endl;
-  std::cout << "Please enter camera ID : ";
-  std::string input;
-  std::getline(std::cin, input);
+std::string get_camera_id_from_user() {
+  std::cout << "\n" << std::string(60, '=') << std::endl;
+  std::cout << "Please refer to the interface description for available camera IDs" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
   
-  size_t start = input.find_first_not_of(" \t\r\n");
+  std::cout << "\nPlease enter camera ID: ";
+  std::string camera_id;
+  std::getline(std::cin, camera_id);
+  
+  // Trim whitespace
+  size_t start = camera_id.find_first_not_of(" \t\r\n");
   if (start == std::string::npos) {
-    return default_value;
+    std::cout << "\nError: camera_id cannot be empty." << std::endl;
+    std::cout << "Exiting...\n" << std::endl;
+    std::exit(1);
   }
-  size_t end = input.find_last_not_of(" \t\r\n");
-  return input.substr(start, end - start + 1);
+  size_t end = camera_id.find_last_not_of(" \t\r\n");
+  camera_id = camera_id.substr(start, end - start + 1);
+  
+  std::cout << "\nUsing camera_id: " << camera_id << std::endl;
+  std::cout << std::string(60, '=') << "\n" << std::endl;
+  
+  return camera_id;
 }
 
 std::filesystem::path prepare_output_path(const std::string &output_file) {
@@ -98,19 +107,13 @@ std::filesystem::path prepare_output_path(const std::string &output_file) {
 
 class CaptureJpegClient : public rclcpp::Node {
 public:
-  CaptureJpegClient() : Node("get_jpg") {
+  CaptureJpegClient(const std::string &camera_id) : Node("get_jpg") {
     service_name_ =
         this->declare_parameter<std::string>("service_name", kDefaultServiceName);
-    camera_id_ =
-        this->declare_parameter<std::string>("camera_id", "");
     timeout_ms_ =
         this->declare_parameter<int>("timeout_ms", kDefaultRequestTimeoutMs);
     output_file_ = this->declare_parameter<std::string>("output_file", "");
-
-    if (camera_id_.empty()) {
-      camera_id_ = prompt_camera_id("head_monocular_centra");
-      std::cout << std::endl;
-    }
+    camera_id_ = camera_id;  // Use the camera_id passed from user input
 
     if (service_name_.empty()) {
       throw std::invalid_argument("service_name must not be empty.");
@@ -287,11 +290,14 @@ void signal_handler(int signal) {
 
 int main(int argc, char *argv[]) {
   try {
+    // Get camera_id from user input before creating the node
+    std::string camera_id = get_camera_id_from_user();
+    
     rclcpp::init(argc, argv);
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    auto node = std::make_shared<CaptureJpegClient>();
+    auto node = std::make_shared<CaptureJpegClient>(camera_id);
     g_node = node;
     const bool ok = node->capture_once();
 

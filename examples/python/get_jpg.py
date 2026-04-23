@@ -8,11 +8,11 @@ The following ROS parameters can be set via startup arguments:
 Supported parameters:
   - service_name: CaptureJpegImage service name
   - camera_id: Camera identifier
-    Available values:
-      - head_monocular_centra: Q model interactive camera
-      - head_stereo_left: T model left stereo camera
-      - head_stereo_right: T model right stereo camera
-    (Interactive prompt if not provided)
+        Available camera_id options:
+        - head_monocular_centra
+        - head_stereo_left
+        - head_stereo_right
+        For details, please refer to the interface documentation.
   - timeout_ms: Wait time for a fresh JPEG frame, in milliseconds. Use 0 to
     follow the server default.
   - output_file: Local JPEG output path. Leave empty to auto-generate one.
@@ -24,11 +24,11 @@ Interactive Mode:
 Examples:
 
   # Interactive mode (will prompt for camera_id)
-  python3 /workspace/sdk/examples/python/get_jpg.py --ros-args \
-    -p output_file:=/tmp/camera.jpg
+  python3 /workspace/sdk/examples/python/get_jpg.py 
 """
 
 from pathlib import Path
+import sys
 
 import rclpy
 import rclpy.logging
@@ -55,8 +55,25 @@ def prepare_output_path(output_file: str) -> Path:
     return output_path
 
 
+def get_camera_id_from_user() -> str:
+    """Interactively get camera_id from user input."""
+    print("\n" + "="*60)
+    print("Please refer to the interface description for available camera IDs")
+    print("="*60)
+    camera_id = input("\nPlease enter camera ID: ").strip()
+    
+    if not camera_id:
+        print("\nError: camera_id cannot be empty.")
+        print("Exiting...\n")
+        sys.exit(1)
+    
+    print(f"\nUsing camera_id: {camera_id}")
+    print("="*60 + "\n", flush=True)
+    return camera_id
+
+
 class CaptureJpegClient(Node):
-    def __init__(self) -> None:
+    def __init__(self, camera_id: str) -> None:
         super().__init__("get_jpg")
 
         self.service_name = self.declare_parameter(
@@ -66,18 +83,7 @@ class CaptureJpegClient(Node):
             "timeout_ms", DEFAULT_REQUEST_TIMEOUT_MS
         ).value
         self.output_file = self.declare_parameter("output_file", "").value 
-        self.camera_id = self.declare_parameter("camera_id", "").value  
-
-        if not self.camera_id:
-            print("Available camera IDs:")
-            print("  - head_monocular_centra: Q model interactive camera")
-            print("  - head_stereo_left: T model left stereo camera")
-            print("  - head_stereo_right: T model right stereo camera")
-            self.camera_id = input("Please enter camera ID : ").strip()
-            if not self.camera_id:
-                self.camera_id = "head_monocular_centra"
-            print()  
-
+        self.camera_id = camera_id  
 
         if not self.service_name:
             raise ValueError("service_name must not be empty.")
@@ -180,7 +186,9 @@ def main(args=None) -> int:
     node = None
 
     try:
-        node = CaptureJpegClient()
+        camera_id = get_camera_id_from_user()
+        
+        node = CaptureJpegClient(camera_id)
         return 0 if node.capture_once() else 1
     except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("get_jpg").error(

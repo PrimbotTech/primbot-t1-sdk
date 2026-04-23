@@ -1,11 +1,6 @@
 /**
  * @brief Example reader for the RTSP video stream.
  *
- * Supported Cameras:
- *   head_monocular_centra  - Q model interactive camera
- *   head_stereo_left       - T model left stereo camera
- *   head_stereo_right      - T model right stereo camera
- *
  * RTSP URL Format:
  *   rtsp://{ip}:2554/live_{camera_id}
  *
@@ -60,7 +55,7 @@ struct Options {
   std::string output_file{kDefaultOutputFile};
   double capture_seconds{kDefaultCaptureSeconds};
   std::string camera_id{""};
-  std::string robot_ip{"10.1.1.100"};
+  std::string robot_ip{""};
 };
 
 std::string format_double(double value) {
@@ -127,10 +122,7 @@ std::string prompt_input(const std::string &message, const std::string &default_
 }
 
 void print_camera_list() {
-  std::cout << "Available camera IDs:" << std::endl;
-  std::cout << "  - head_monocular_centra: Q model interactive camera" << std::endl;
-  std::cout << "  - head_stereo_left: T model left stereo camera" << std::endl;
-  std::cout << "  - head_stereo_right: T model right stereo camera" << std::endl;
+  std::cout << "Please refer to the interface description for available camera IDs" << std::endl;
 }
 
 std::string build_rtsp_url(const std::string &ip, const std::string &camera_id) {
@@ -231,13 +223,19 @@ Options parse_args(int argc, char **argv) {
 
   // Interactive input for robot_ip if not provided
   if (options.robot_ip.empty()) {
-    options.robot_ip = prompt_input("Please enter robot IP address", "10.1.1.100");
+    options.robot_ip = prompt_input("Please enter robot IP address", "");
+    if (options.robot_ip.empty()) {
+      throw std::invalid_argument("robot_ip must not be empty.");
+    }
   }
 
   // Interactive input for camera_id if not provided
   if (options.camera_id.empty()) {
     print_camera_list();
-    options.camera_id = prompt_input("Please enter camera ID", "head_monocular_centra");
+    options.camera_id = prompt_input("Please enter camera ID", "");
+    if (options.camera_id.empty()) {
+      throw std::invalid_argument("camera_id must not be empty.");
+    }
   }
 
   if (options.output_file.empty()) {
