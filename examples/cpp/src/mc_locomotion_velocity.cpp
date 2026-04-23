@@ -264,7 +264,31 @@ public:
 
   bool ensure_ready_state() {
     ActionInfo info;
-    if (get_action_status(info) && info.action_desc == "BIPED_WALK_RUN" &&
+    bool has_info = get_action_status(info);
+
+    // Safety margin: If initial query fails, poll for up to 5s to recover communication
+    if (!has_info) {
+      RCLCPP_WARN(this->get_logger(),
+                  "Initial action status query failed. Retrying for up to 5 seconds...");
+      auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+      while (std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        if (get_action_status(info)) {
+          has_info = true;
+          RCLCPP_INFO(this->get_logger(),
+                      "Successfully recovered action status: %s",
+                      info.action_desc.c_str());
+          break;
+        }
+      }
+      if (!has_info) {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Action status remained unavailable after 5 seconds of polling.");
+      }
+    }
+
+    if (has_info && info.action_desc == "BIPED_WALK_RUN" &&
         info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
       return true;
     }

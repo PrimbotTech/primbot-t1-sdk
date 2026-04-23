@@ -7,24 +7,25 @@
  *
  * Supported parameters:
  *   - type: "action" or "motion", required
- *   - action_desc: string, required when type=action
+ *   - action_desc: string, ignored in interactive action mode
  *   - motion: string, required when type=motion
  *   - interrupt: bool, optional when type=motion, default=true
  *
  * Examples:
- *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action -p
- *   action_desc:=BIPED_STAND_DEFAULT
+ *   # Starts interactive state machine navigator
+ *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action
  *
+ *   # Executes specific motion with auto-transition to WALK_RUN
  *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=motion -p
  *   motion:=INTRO_POSE6 -p interrupt:=true
  *
  * Notes:
- *   - This script automatically handles state machine transitions for safety.
- *   - Before executing the requested action/motion, it will sequentially
- * attempt:
- *     1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
- *     2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
- *     3. Execute the user-specified action or motion.
+ *   - Interactive Action Mode: Allows manual state machine navigation via
+ * terminal.
+ *   - Automatic Motion Mode: seq auto-path (PASSIVE -> STAND -> WALK_RUN).
+ *   - Smart Transition: Automatically skips redundant steps based on current
+ * robot pose.
+ *   - On-demand Check: Only waits for services relevant to the selected mode.
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
@@ -80,55 +81,99 @@ public:
     }
 
     wait_for_services();
-    ActionInfo current;
-
-    // Step 1: Pre-switch to PASSIVE_DEFAULT to ensure a clean state transition path
-    if (get_action_status(current) && current.action_desc != "PASSIVE_DEFAULT") {
-      RCLCPP_INFO(this->get_logger(), "Pre-requisite: Switching to PASSIVE_DEFAULT...");
-      if (!set_action("PASSIVE_DEFAULT") || !wait_for_action("PASSIVE_DEFAULT")) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to switch to PASSIVE_DEFAULT.");
-        return false;
-      }
-    }
-
-    // Step 2: Switch to BIPED_STAND_DEFAULT before executing the final target
-    if (get_action_status(current) && current.action_desc != "BIPED_STAND_DEFAULT") {
-      RCLCPP_INFO(this->get_logger(), "Pre-requisite: Switching to BIPED_STAND_DEFAULT...");
-      if (!set_action("BIPED_STAND_DEFAULT") || !wait_for_action("BIPED_STAND_DEFAULT")) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to switch to BIPED_STAND_DEFAULT.");
-        return false;
-      }
-    }
-
-    // Step 3: Execute intended user logic
 
     if (type_ == "action") {
-      ActionInfo info;
-      if (get_action_status(info) && info.action_desc == action_desc_) {
-        if (info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
-          RCLCPP_INFO(this->get_logger(),
-                      "Target action is already running: action_desc=%s",
-                      action_desc_.c_str());
-          return true;
+      while (rclcpp::ok()) {
+        ActionInfo current;
+        if (!get_action_status(current)) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+          continue;
         }
 
-        RCLCPP_INFO(this->get_logger(),
-                    "Target action is already active with status=%d, waiting "
-                    "for RUNNING: action_desc=%s",
-                    info.status, action_desc_.c_str());
-        return wait_for_action(action_desc_);
-      }
+        RCLCPP_INFO(this->get_logger(), "Current Action is: %s",
+                    current.action_desc.c_str());
 
-      if (!set_action(action_desc_)) {
+        std::cout << "\nCurrent Action is: " << current.action_desc
+                  << ", please input the expected Action according to the "
+                     "motion control state machine transition "
+                     "logic in the interface documentation. The Action you "
+                     "need to switch: "
+                  << std::flush;
+
+        std::string target_action;
+        if (!std::getline(std::cin, target_action) || target_action.empty()) {
+          if (std::cin.eof()) break;
+          continue;
+        }
+
+        // Execute SetMcAction
+        if (set_action(target_action)) {
+          // Poll for success within 5 seconds
+          if (wait_for_action(target_action, std::chrono::seconds(5))) {
+            std::cout << "Switch succeeded, would you like to continue "
+                         "switching? (y/n): "
+                      << std::flush;
+            std::string choice;
+            std::getline(std::cin, choice);
+            if (choice != "y" && choice != "Y") {
+              break;
+            }
+          } else {
+            std::cout << "Switch failed, please confirm if the expected Action "
+                         "complies with the state machine transition logic"
+                      << std::endl;
+          }
+        } else {
+          std::cout << "Switch failed, please confirm if the expected Action "
+                       "complies with the state machine transition logic"
+                    << std::endl;
+        }
+      }
+      return true;
+    } else {
+      // Optimized logic for 'motion' type: Ensure robot is in BIPED_WALK_RUN
+      ActionInfo current;
+      if (!get_action_status(current)) {
         return false;
       }
-      return wait_for_action(action_desc_);
-    }
 
-    if (!set_motion(motion_, interrupt_)) {
-      return false;
+      if (current.action_desc == "BIPED_WALK_RUN" &&
+          current.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+        RCLCPP_INFO(this->get_logger(),
+                    "Robot already in BIPED_WALK_RUN. Proceeding to motion...");
+      } else {
+        RCLCPP_INFO(this->get_logger(),
+                    "Current state is %s. Starting state machine transition "
+                    "sequence...",
+                    current.action_desc.c_str());
+        std::vector<std::string> sequence = {
+            "PASSIVE_DEFAULT", "BIPED_STAND_DEFAULT", "BIPED_WALK_RUN"};
+
+        // Determine starting point in the sequence to skip redundant steps
+        size_t start_index = 0;
+        if (current.action_desc == "PASSIVE_DEFAULT") {
+          start_index = 1;
+        } else if (current.action_desc == "BIPED_STAND_DEFAULT") {
+          start_index = 2;
+        }
+
+        // Execute the required sequence of states
+        for (size_t i = start_index; i < sequence.size(); ++i) {
+          const std::string &target = sequence[i];
+          RCLCPP_INFO(this->get_logger(), "Pre-requisite: Switching to %s...",
+                      target.c_str());
+          if (!set_action(target) || !wait_for_action(target)) {
+            return false;
+          }
+        }
+      }
+
+      // Execute final target motion
+      if (!set_motion(motion_, interrupt_)) {
+        return false;
+      }
+      return wait_for_motion();
     }
-    return wait_for_motion();
   }
 
 private:
@@ -152,10 +197,9 @@ private:
       return false;
     }
 
-    if (type_ == "action" && action_desc_.empty()) {
+    if (type_ == "motion" && motion_.empty()) {
       RCLCPP_ERROR(this->get_logger(),
-                   "Parameter 'action_desc' must be set when "
-                   "type=action.");
+                   "Parameter 'motion' must be set when type=motion.");
       return false;
     }
 
@@ -383,9 +427,15 @@ private:
   }
 
   void wait_for_services() {
-    wait_for_service(set_action_client_, "/aimdk_5Fmsgs/srv/SetMcAction");
-    wait_for_service(set_motion_client_, "/aimdk_5Fmsgs/srv/SetMcMotion");
+    /* Check only the necessary services based on the operation type. */
+    // GetMcAction is required for both types to query the current state
     wait_for_service(get_client_, "/aimdk_5Fmsgs/srv/GetMcAction");
+
+    if (type_ == "action") {
+      wait_for_service(set_action_client_, "/aimdk_5Fmsgs/srv/SetMcAction");
+    } else if (type_ == "motion") {
+      wait_for_service(set_motion_client_, "/aimdk_5Fmsgs/srv/SetMcMotion");
+    }
   }
 
   std::string type_;

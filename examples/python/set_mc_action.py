@@ -8,23 +8,23 @@ The following ROS parameters can be set via startup arguments:
 
 Supported parameters:
   - type: "action" or "motion", required
-  - action_desc: string, required when type=action
+  - action_desc: string, ignored in interactive action mode
   - motion: string, required when type=motion
   - interrupt: bool, optional when type=motion, default=true
 
 Examples:
-  python3 examples/python/set_mc_action.py --ros-args -p type:=action -p \
-  action_desc:=BIPED_STAND_DEFAULT
-
+  # Starts interactive state machine navigator
+  python3 examples/python/set_mc_action.py --ros-args -p type:=action
+  
+  # Executes specific motion with auto-transition to WALK_RUN
   python3 examples/python/set_mc_action.py --ros-args -p type:=motion -p \
   motion:=INTRO_POSE6 -p interrupt:=true
 
 Notes:
-  - This script automatically handles state machine transitions for safety.
-  - Before executing the requested action/motion, it will sequentially attempt:
-    1. Switch to PASSIVE_DEFAULT (ensure a clean starting point).
-    2. Switch to BIPED_STAND_DEFAULT (enter standing posture).
-    3. Execute the user-specified action or motion.
+  - Interactive Action Mode: Allows manual state machine navigation via terminal.
+  - Automatic Motion Mode: seq auto-path (PASSIVE -> STAND -> WALK_RUN).
+  - Smart Transition: Automatically skips redundant steps based on current robot pose.
+  - On-demand Check: Only waits for services relevant to the selected mode.
 """
 
 import time
@@ -66,51 +66,71 @@ class SetMcActionClient(Node):
 
         self.wait_for_services()
 
-        # Step 1: Pre-switch to PASSIVE_DEFAULT to ensure a clean state transition path
-        current_id, current_desc, current_status = self.get_action_status()
-        if current_desc != 'PASSIVE_DEFAULT':
-            self.get_logger().info('Pre-requisite: Switching to PASSIVE_DEFAULT...')
-            if not self.set_action('PASSIVE_DEFAULT'):
-                self.get_logger().error('Failed to switch to PASSIVE_DEFAULT.')
-                return False
-            if not self.wait_for_action('PASSIVE_DEFAULT'):
-                return False
-
-        # Step 2: Switch to BIPED_STAND_DEFAULT before executing the final target
-        current_id, current_desc, current_status = self.get_action_status()
-        if current_desc != 'BIPED_STAND_DEFAULT':
-            self.get_logger().info('Pre-requisite: Switching to BIPED_STAND_DEFAULT...')
-            if not self.set_action('BIPED_STAND_DEFAULT'):
-                self.get_logger().error('Failed to switch to BIPED_STAND_DEFAULT.')
-                return False
-            if not self.wait_for_action('BIPED_STAND_DEFAULT'):
-                return False
-
-        # Step 3: Execute intended user logic
         if self.type == 'action':
-            action_id, action_desc, status = self.get_action_status()
-            if action_desc == self.action_desc:
-                if status == McActionStatus.RUNNING:
-                    self.get_logger().info(
-                        'Target action is already running: '
-                        f'action_desc={self.action_desc}'
-                    )
-                    return True
+            try:
+                while rclpy.ok():
+                    current_id, current_desc, current_status = self.get_action_status()
+                    self.get_logger().info(f'Current Action is: {current_desc}')
+                    
+                    try:
+                        target_action = input(
+                            f"Current Action is: {current_desc}, please input the expected Action "
+                            "according to the motion control state machine transition logic in the "
+                            "interface documentation. The Action you need to switch: "
+                        ).strip()
+                    except EOFError:
+                        break
 
-                self.get_logger().info(
-                    'Target action is already active with '
-                    f'status={status}, waiting for RUNNING: '
-                    f'action_desc={self.action_desc}'
-                )
-                return self.wait_for_action(self.action_desc)
+                    if not target_action:
+                        continue
 
-            if not self.set_action(self.action_desc):
+                    # Execute SetMcAction
+                    if self.set_action(target_action):
+                        # Poll for success within 5 seconds
+                        if self.wait_for_action(target_action, timeout_sec=5.0):
+                            print("Switch succeeded, would you like to continue switching? (y/n): ", end='', flush=True)
+                            choice = input().strip().lower()
+                            if choice != 'y':
+                                break
+                        else:
+                            print("Switch failed, please confirm if the expected Action complies with the state machine transition logic")
+                    else:
+                        print("Switch failed, please confirm if the expected Action complies with the state machine transition logic")
+                return True
+            except KeyboardInterrupt:
+                return True
+        else:
+            # Optimized logic for 'motion' type: Ensure robot is in BIPED_WALK_RUN
+            current_id, current_desc, current_status = self.get_action_status()
+            
+            if current_desc == 'BIPED_WALK_RUN' and current_status == McActionStatus.RUNNING:
+                self.get_logger().info('Robot already in BIPED_WALK_RUN. Proceeding to motion...')
+            else:
+                self.get_logger().info(f'Current state is {current_desc}. Starting state machine transition sequence...')
+                sequence = [
+                    'PASSIVE_DEFAULT',
+                    'BIPED_STAND_DEFAULT',
+                    'BIPED_WALK_RUN'
+                ]
+                
+                # Determine starting point in the sequence to skip redundant steps
+                start_index = 0
+                if current_desc == 'PASSIVE_DEFAULT':
+                    start_index = 1
+                elif current_desc == 'BIPED_STAND_DEFAULT':
+                    start_index = 2
+                
+                # Execute the required sequence of states
+                for i in range(start_index, len(sequence)):
+                    target = sequence[i]
+                    self.get_logger().info(f'Pre-requisite: Switching to {target}...')
+                    if not self.set_action(target) or not self.wait_for_action(target):
+                        return False
+
+            # Execute final target motion
+            if not self.set_motion(self.motion, self.interrupt):
                 return False
-            return self.wait_for_action(self.action_desc)
-
-        if not self.set_motion(self.motion, self.interrupt):
-            return False
-        return self.wait_for_motion()
+            return self.wait_for_motion()
 
     def validate_parameters(self) -> bool:
         if not self.type:
@@ -123,12 +143,6 @@ class SetMcActionClient(Node):
             self.get_logger().error(
                 f"Invalid parameter 'type': {self.type}. "
                 "Use 'action' or 'motion'."
-            )
-            return False
-
-        if self.type == 'action' and not self.action_desc:
-            self.get_logger().error(
-                "Parameter 'action_desc' must be set when type=action."
             )
             return False
 
@@ -148,9 +162,14 @@ class SetMcActionClient(Node):
         self.get_logger().info(f'Service available: {service_name}')
 
     def wait_for_services(self):
-        self.wait_for_service(self.set_action_client, '/aimdk_5Fmsgs/srv/SetMcAction')
-        self.wait_for_service(self.set_motion_client, '/aimdk_5Fmsgs/srv/SetMcMotion')
+        """Check only the necessary services based on the operation type."""
+        # GetMcAction is required for both types to query the current state
         self.wait_for_service(self.get_client, '/aimdk_5Fmsgs/srv/GetMcAction')
+
+        if self.type == 'action':
+            self.wait_for_service(self.set_action_client, '/aimdk_5Fmsgs/srv/SetMcAction')
+        elif self.type == 'motion':
+            self.wait_for_service(self.set_motion_client, '/aimdk_5Fmsgs/srv/SetMcMotion')
 
     def set_action(self, action_desc: str) -> bool:
         try:
