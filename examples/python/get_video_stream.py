@@ -1,25 +1,27 @@
 #!/usr/bin/env python3
 
-"""
-Example reader for the fixed RTSP video stream.
+"""RTSP Video Stream Reader Example
+  
+RTSP URL Format:
+  rtsp://{ip}:2554/live_{camera_id}
 
-RTSP URL:
-  rtsp://172.31.10.16:2554/live
-
-Default MP4 output:
+Default MP4 Output Path:
   /tmp/video_capture.mp4
 
-Supported arguments:
-  --output_file: MP4 output path.
-  --capture_seconds: stop automatically after the first frame arrives and
-    this many seconds have elapsed. Set <= 0 to run until Ctrl+C.
+Supported Arguments:
+  --camera_id, --camera: Camera identifier (interactive prompt if not provided)
+  --robot_ip, --ip: Robot IP address (interactive prompt if not provided)
+  --output_file, --output: MP4 output file path (default: /tmp/video_capture.mp4)
+  --capture_seconds, --duration: Stop automatically after this many seconds
+    (default: 5.0). Set <= 0 to run until Ctrl+C.
+
+Interactive Mode:
+  If --camera or --ip is not provided, the script will prompt for input.
+  Press Enter to use the default values shown in brackets.
 
 Examples:
-  python3 examples/python/get_video_stream.py --output_file /tmp/live.mp4
-
-  python3 examples/python/get_video_stream.py --capture_seconds 5
-
-  python3 examples/python/get_video_stream.py --capture_seconds 0
+  # Interactive mode (will prompt for camera and IP)
+  python3 examples/python/get_video_stream.py
 """
 
 from __future__ import annotations
@@ -30,7 +32,7 @@ import sys
 import time
 from typing import Any
 
-RTSP_URL = "rtsp://172.31.11.79:2554/live"
+RTSP_URL = "rtsp://{ip}:2554/live_{camera_id}"
 DEFAULT_OUTPUT_FILE = "/tmp/video_capture.mp4"
 DEFAULT_CAPTURE_SECONDS = 5.0
 DEFAULT_LOG_EVERY_N_FRAMES = 100
@@ -72,15 +74,52 @@ def parse_args() -> argparse.Namespace:
         default=DEFAULT_CAPTURE_SECONDS,
         help="Stop automatically after this many seconds. Use <= 0 to run forever.",
     )
-    return parser.parse_args()
+    parser.add_argument(
+        "--camera_id",
+        "--camera",
+        dest="camera_id",
+        default=None,  
+        help="Camera identifier (e.g., head_monocular_centra, head_stereo_left).",
+    )
+    parser.add_argument(
+        "--robot_ip",
+        "--ip",
+        dest="robot_ip",
+        default=None,  
+        help="Robot IP address (e.g., 10.1.1.100 or 192.168.1.100).",
+    )
+    
+    args = parser.parse_args()
+    
+    if args.robot_ip is None:
+        print()
+        print("robot_ip is required. Please provide it via command line argument.")
+        args.robot_ip = input("Please enter robot IP address : ").strip()
+        if not args.robot_ip:
+            sys.exit(1) 
+    
+    if args.camera_id is None:
+        print()
+        print("camera_id is required. Please provide it via command line argument.")
+        print("Please refer to the interface description for available camera IDs")
+        args.camera_id = input("Please enter camera ID : ").strip()
+        if not args.camera_id:
+            sys.exit(1)
+    
+    return args
 
 
 class RtspVideoStreamReader:
     def __init__(self, args: argparse.Namespace) -> None:
         self.cv2 = load_opencv()
-        self.url = RTSP_URL
         self.output_file = args.output_file
         self.capture_seconds = args.capture_seconds
+        self.camera_id = args.camera_id    
+        self.robot_ip = args.robot_ip
+        self.url = RTSP_URL.format(
+            ip=self.robot_ip,
+            camera_id=self.camera_id
+        )
         self.log_every_n_frames = DEFAULT_LOG_EVERY_N_FRAMES
 
         self.capture = None

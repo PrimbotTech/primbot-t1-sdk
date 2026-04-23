@@ -1,29 +1,34 @@
 #!/usr/bin/env python3
 
-"""
-Example client for CaptureJpegImage service.
+"""Example client for CaptureJpegImage service.
 
 The following ROS parameters can be set via startup arguments:
 --ros-args -p <name>:=<value>
 
 Supported parameters:
   - service_name: CaptureJpegImage service name
-  - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
+  - camera_id: Camera identifier
+        Available camera_id options:
+        - head_monocular_centra
+        - head_stereo_left
+        - head_stereo_right
+        For details, please refer to the interface documentation.
+  - timeout_ms: Wait time for a fresh JPEG frame, in milliseconds. Use 0 to
     follow the server default.
-  - output_file: local JPEG output path. Leave empty to auto-generate one.
+  - output_file: Local JPEG output path. Leave empty to auto-generate one.
+
+Interactive Mode:
+  If camera_id is not provided via --ros-args -p camera_id:=<value>,
+  the script will prompt for input. Press Enter to use the default value.
 
 Examples:
-  python3 /workspace/sdk/examples/python/get_jpg.py
 
-  python3 /workspace/sdk/examples/python/get_jpg.py --ros-args \
-    -p output_file:=/tmp/camera_left.jpg
-
-  python3 /workspace/sdk/examples/python/get_jpg.py --ros-args \
-    -p service_name:=/aima/hal/camera/bgr_5Fcamera_5Fr/capture_5Fjpeg \
-    -p timeout_ms:=0
+  # Interactive mode (will prompt for camera_id)
+  python3 /workspace/sdk/examples/python/get_jpg.py 
 """
 
 from pathlib import Path
+import sys
 
 import rclpy
 import rclpy.logging
@@ -33,7 +38,8 @@ from aimdk_msgs.msg import CommonRequest, CommonState
 from aimdk_msgs.srv import CaptureJpegImage
 
 
-DEFAULT_SERVICE_NAME = "/aima/hal/camera/bgr_5Fcamera_5Fl/capture_5Fjpeg"
+
+DEFAULT_SERVICE_NAME = "/aima/hal/camera/CaptureJpegImage"
 DEFAULT_OUTPUT_FILE = "/tmp/camera_capture.jpg"
 DEFAULT_REQUEST_TIMEOUT_MS = 5000
 SERVICE_WAIT_SECONDS = 2.0
@@ -49,8 +55,25 @@ def prepare_output_path(output_file: str) -> Path:
     return output_path
 
 
+def get_camera_id_from_user() -> str:
+    """Interactively get camera_id from user input."""
+    print("\n" + "="*60)
+    print("Please refer to the interface description for available camera IDs")
+    print("="*60)
+    camera_id = input("\nPlease enter camera ID: ").strip()
+    
+    if not camera_id:
+        print("\nError: camera_id cannot be empty.")
+        print("Exiting...\n")
+        sys.exit(1)
+    
+    print(f"\nUsing camera_id: {camera_id}")
+    print("="*60 + "\n", flush=True)
+    return camera_id
+
+
 class CaptureJpegClient(Node):
-    def __init__(self) -> None:
+    def __init__(self, camera_id: str) -> None:
         super().__init__("get_jpg")
 
         self.service_name = self.declare_parameter(
@@ -59,7 +82,8 @@ class CaptureJpegClient(Node):
         self.timeout_ms = self.declare_parameter(
             "timeout_ms", DEFAULT_REQUEST_TIMEOUT_MS
         ).value
-        self.output_file = self.declare_parameter("output_file", "").value
+        self.output_file = self.declare_parameter("output_file", "").value 
+        self.camera_id = camera_id  
 
         if not self.service_name:
             raise ValueError("service_name must not be empty.")
@@ -70,9 +94,11 @@ class CaptureJpegClient(Node):
         self.output_path = prepare_output_path(self.output_file)
         self.client = self.create_client(CaptureJpegImage, self.service_name)
 
+        # 打印客户端创建成功日志
         self.get_logger().info(
             "CaptureJpegImage client created. "
             f"service={self.service_name} "
+            f"camera_id={self.camera_id} "
             f"timeout_ms={self.timeout_ms} "
             f"output_file={self.output_path}"
         )
@@ -93,6 +119,7 @@ class CaptureJpegClient(Node):
         request = CaptureJpegImage.Request()
         request.request = CommonRequest()
         request.request.header.stamp = self.get_clock().now().to_msg()
+        request.camera_id = self.camera_id
         request.timeout_ms = self.timeout_ms
 
         self.get_logger().info(
@@ -159,7 +186,9 @@ def main(args=None) -> int:
     node = None
 
     try:
-        node = CaptureJpegClient()
+        camera_id = get_camera_id_from_user()
+        
+        node = CaptureJpegClient(camera_id)
         return 0 if node.capture_once() else 1
     except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("get_jpg").error(

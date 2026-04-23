@@ -6,19 +6,25 @@
  *
  * Supported parameters:
  *   - service_name: CaptureJpegImage service name
+ *   - camera_id: Camera identifier (interactive prompt if not provided)
+      *   - Available camera_id options:
+      *     - head_monocular_centra
+      *     - head_stereo_left
+      *     - head_stereo_right
+      *     For details, please refer to the interface documentation.
  *   - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
  *     follow the server default.
  *   - output_file: local JPEG output path. Leave empty to auto-generate one.
  *
+ * Interactive Mode:
+ *   If camera_id is not provided via -p camera_id:=<value>,
+ *   the program will prompt for input. Press Enter to use the default value.
+ *
  * Examples:
- *   ros2 run aimdk_examples_cpp get_jpg
- *
+ *   # Interactive mode (will prompt for camera_id)
  *   ros2 run aimdk_examples_cpp get_jpg --ros-args \
- *     -p output_file:=/tmp/camera_left.jpg
+ *     -p output_file:=/tmp/camera_capture.jpg
  *
- *   ros2 run aimdk_examples_cpp get_jpg --ros-args \
- *     -p service_name:=/aima/hal/camera/bgr_5Fcamera_5Fr/capture_5Fjpeg \
- *     -p timeout_ms:=0
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
@@ -32,6 +38,7 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <signal.h>
 #include <stdexcept>
@@ -41,13 +48,38 @@
 namespace {
 
 constexpr char kDefaultServiceName[] =
-    "/aima/hal/camera/bgr_5Fcamera_5Fl/capture_5Fjpeg";
+    "/aima/hal/camera/CaptureJpegImage";
 constexpr char kDefaultOutputFile[] = "/tmp/camera_capture.jpg";
 constexpr int kDefaultRequestTimeoutMs = 5000;
 constexpr int kServiceWaitSeconds = 2;
 constexpr int kMinCallTimeoutMs = 6000;
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
+
+std::string get_camera_id_from_user() {
+  std::cout << "\n" << std::string(60, '=') << std::endl;
+  std::cout << "Please refer to the interface description for available camera IDs" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+  
+  std::cout << "\nPlease enter camera ID: ";
+  std::string camera_id;
+  std::getline(std::cin, camera_id);
+  
+  // Trim whitespace
+  size_t start = camera_id.find_first_not_of(" \t\r\n");
+  if (start == std::string::npos) {
+    std::cout << "\nError: camera_id cannot be empty." << std::endl;
+    std::cout << "Exiting...\n" << std::endl;
+    std::exit(1);
+  }
+  size_t end = camera_id.find_last_not_of(" \t\r\n");
+  camera_id = camera_id.substr(start, end - start + 1);
+  
+  std::cout << "\nUsing camera_id: " << camera_id << std::endl;
+  std::cout << std::string(60, '=') << "\n" << std::endl;
+  
+  return camera_id;
+}
 
 std::filesystem::path prepare_output_path(const std::string &output_file) {
   std::filesystem::path output_path(
@@ -75,12 +107,13 @@ std::filesystem::path prepare_output_path(const std::string &output_file) {
 
 class CaptureJpegClient : public rclcpp::Node {
 public:
-  CaptureJpegClient() : Node("get_jpg") {
+  CaptureJpegClient(const std::string &camera_id) : Node("get_jpg") {
     service_name_ =
         this->declare_parameter<std::string>("service_name", kDefaultServiceName);
     timeout_ms_ =
         this->declare_parameter<int>("timeout_ms", kDefaultRequestTimeoutMs);
     output_file_ = this->declare_parameter<std::string>("output_file", "");
+    camera_id_ = camera_id;  // Use the camera_id passed from user input
 
     if (service_name_.empty()) {
       throw std::invalid_argument("service_name must not be empty.");
@@ -95,9 +128,10 @@ public:
         service_name_);
 
     RCLCPP_INFO(this->get_logger(),
-                "CaptureJpegImage client created. service=%s timeout_ms=%d "
-                "output_file=%s",
-                service_name_.c_str(), timeout_ms_,
+                "CaptureJpegImage client created. service=%s camera_id=%s "
+                "timeout_ms=%d output_file=%s",
+                service_name_.c_str(), camera_id_.empty() ? "(default)" : camera_id_.c_str(),
+                timeout_ms_,
                 output_path_.string().c_str());
   }
 
@@ -110,10 +144,12 @@ public:
         std::make_shared<aimdk_msgs::srv::CaptureJpegImage::Request>();
     request->request = aimdk_msgs::msg::CommonRequest();
     request->request.header.stamp = this->now();
+    request->camera_id = camera_id_;
     request->timeout_ms = static_cast<std::uint32_t>(timeout_ms_);
 
     RCLCPP_INFO(this->get_logger(),
-                "Sending CaptureJpegImage request: timeout_ms=%u",
+                "Sending CaptureJpegImage request: camera_id=%s timeout_ms=%u",
+                camera_id_.empty() ? "(default)" : camera_id_.c_str(),
                 request->timeout_ms);
 
     auto future = client_->async_send_request(request);
@@ -222,6 +258,7 @@ private:
   }
 
   std::string service_name_;
+  std::string camera_id_;
   int timeout_ms_{kDefaultRequestTimeoutMs};
   std::string output_file_;
   std::filesystem::path output_path_;
@@ -253,11 +290,14 @@ void signal_handler(int signal) {
 
 int main(int argc, char *argv[]) {
   try {
+    // Get camera_id from user input before creating the node
+    std::string camera_id = get_camera_id_from_user();
+    
     rclcpp::init(argc, argv);
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    auto node = std::make_shared<CaptureJpegClient>();
+    auto node = std::make_shared<CaptureJpegClient>(camera_id);
     g_node = node;
     const bool ok = node->capture_once();
 
