@@ -9,8 +9,8 @@ find_package(ruckig_for_primebot REQUIRED)
 
 set(EXAMPLE_TARGETS
   get_audio_stream
+  get_bms_state
   get_jpg
-  get_pmu_state
   get_touch_state
   get_video_stream
   joint_control

@@ -8,12 +8,12 @@ string hardware_version     # 硬件版本
 string software_version     # 软件版本
 
 # 电源状态
-uint16 power_status
+uint16 power_request
 # 1-触发长按—关机请求
 # 2-请求短按+长按关机请求
 
 # 状态位和状态码
-uint32 bms_status
+uint32 status
 # bit 0:  充电标志
 # bit 1:  充电过流标志
 # bit 2:  放电标志
@@ -46,7 +46,7 @@ uint16 balance_line_resistance      # 电池包均衡线电阻（单位：mΩ）
 uint32 voltage                      # 电池包电压（单位：mV）
 int32 current                       # 电池包电流（单位：mA，充电为正，放电为负）
 int32 power                         # 电池包输出功率（单位：mW）
-uint32 temperature                  # 电池包当前温度（单位：0.1℃）
+float32 temperature                  # 电池包当前温度（单位：℃）
 uint32 remaining_capacity           # 当前电池剩余容量（单位：mAh）
 uint8 remaining_capacity_percentage # 当前电池剩余容量百分比（单位：％）
 uint16 cycle_count                  # 当前电池包完整循环次数（单位：次）

@@ -29,26 +29,26 @@ private:
         << "  hardware_version:             " << msg->hardware_version << "\n"
         << "  software_version:             " << msg->software_version << "\n";
     
-    oss << "  power_status:                 " << msg->power_status << "\n";
+    oss << "  power_request:                " << msg->power_request << "\n";
     
-    oss << "  bms_status:                   " << msg->bms_status << "\n"
-        << "    bit 0 (充电):               " << ((msg->bms_status & 0x01) ? "是" : "否") << "\n"
-        << "    bit 1 (充电过流):           " << ((msg->bms_status & 0x02) ? "是" : "否") << "\n"
-        << "    bit 2 (放电):               " << ((msg->bms_status & 0x04) ? "是" : "否") << "\n"
-        << "    bit 3 (放电过流):           " << ((msg->bms_status & 0x08) ? "是" : "否") << "\n"
-        << "    bit 4 (电池短路):           " << ((msg->bms_status & 0x10) ? "是" : "否") << "\n"
-        << "    bit 20 (充满状态):          " << ((msg->bms_status & (1 << 20)) ? "是" : "否") << "\n"
-        << "    bit 23 (电池包异常):        " << ((msg->bms_status & (1 << 23)) ? "是" : "否") << "\n";
+    oss << "  status:                       " << msg->status << "\n"
+        << "    bit 0 (充电):               " << ((msg->status & 0x01) ? "是" : "否") << "\n"
+        << "    bit 1 (充电过流):           " << ((msg->status & 0x02) ? "是" : "否") << "\n"
+        << "    bit 2 (放电):               " << ((msg->status & 0x04) ? "是" : "否") << "\n"
+        << "    bit 3 (放电过流):           " << ((msg->status & 0x08) ? "是" : "否") << "\n"
+        << "    bit 4 (电池短路):           " << ((msg->status & 0x10) ? "是" : "否") << "\n"
+        << "    bit 20 (充满状态):          " << ((msg->status & (1 << 20)) ? "是" : "否") << "\n"
+        << "    bit 23 (电池包异常):        " << ((msg->status & (1 << 23)) ? "是" : "否") << "\n";
     
     oss << "  balance_line_resistance:      " << msg->balance_line_resistance << " mOhm\n"
         << "  voltage:                      " << (msg->voltage / 1000.0) << " V\n"
         << "  current:                      " << (msg->current / 1000.0) << " A\n"
         << "  power:                        " << (msg->power / 1000.0) << " W\n"
-        << "  temperature:                  " << (msg->temperature / 10.0) << " °C\n"
+        << "  temperature:                  " << msg->temperature << " °C\n"
         << "  remaining_capacity:           " << msg->remaining_capacity << " mAh\n"
         << "  remaining_capacity_pct:       " << static_cast<int>(msg->remaining_capacity_percentage) << " %\n"
         << "  cycle_count:                  " << msg->cycle_count << "\n"
-        << "  cycle_total_capacity:         " << msg->cycle_total_capacity << " mAh\n";
+        << "  cycle_total_capacity:         " << (msg->cycle_total_capacity / 1000.0) << " Ah\n";
 
     RCLCPP_INFO(this->get_logger(), "%s", oss.str().c_str());
   }
