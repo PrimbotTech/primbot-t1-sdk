@@ -58,8 +58,17 @@ std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
 std::string get_camera_id_from_user() {
   std::cout << "\n" << std::string(60, '=') << std::endl;
-  std::cout << "Please refer to the interface description for available camera IDs" << std::endl;
+  std::cout << "Available Camera IDs:" << std::endl;
   std::cout << std::string(60, '=') << std::endl;
+  std::cout << "  head_monocular_centra  - Head monocular central camera" << std::endl;
+  std::cout << "  head_stereo_left       - Head stereo left camera" << std::endl;
+  std::cout << "  head_stereo_right      - Head stereo right camera" << std::endl;
+  std::cout << "  head_fisheye_1         - Head fisheye camera 1" << std::endl;
+  std::cout << "  head_fisheye_2         - Head fisheye camera 2" << std::endl;
+  std::cout << "  head_TOF3D             - Head TOF 3D camera" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+  std::cout << "For camera_id corresponding to different robot configurations, please refer to the interface documentation." << std::endl;
+  std::cout << std::endl;
   
   std::cout << "\nPlease enter camera ID: ";
   std::string camera_id;

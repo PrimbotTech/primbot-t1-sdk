@@ -58,8 +58,17 @@ def prepare_output_path(output_file: str) -> Path:
 def get_camera_id_from_user() -> str:
     """Interactively get camera_id from user input."""
     print("\n" + "="*60)
-    print("Please refer to the interface description for available camera IDs")
+    print("Available Camera IDs:")
     print("="*60)
+    print("  head_monocular_centra  - 头部单目中央相机")
+    print("  head_stereo_left       - 头部双目左相机")
+    print("  head_stereo_right      - 头部双目右相机")
+    print("  head_fisheye_1         - 头部鱼眼相机 1")
+    print("  head_fisheye_2         - 头部鱼眼相机 2")
+    print("  head_TOF3D             - 头部 TOF 3D 相机")
+    print("="*60)
+    print("For camera_id corresponding to different robot configurations, please refer to the interface documentation.")
+    print("")
     camera_id = input("\nPlease enter camera ID: ").strip()
     
     if not camera_id:

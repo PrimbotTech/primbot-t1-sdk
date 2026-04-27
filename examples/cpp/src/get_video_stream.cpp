@@ -122,7 +122,18 @@ std::string prompt_input(const std::string &message, const std::string &default_
 }
 
 void print_camera_list() {
-  std::cout << "Please refer to the interface description for available camera IDs" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+  std::cout << "Available Camera IDs:" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+  std::cout << "  head_monocular_centra  - Head monocular central camera" << std::endl;
+  std::cout << "  head_stereo_left       - Head stereo left camera" << std::endl;
+  std::cout << "  head_stereo_right      - Head stereo right camera" << std::endl;
+  std::cout << "  head_fisheye_1         - Head fisheye camera 1" << std::endl;
+  std::cout << "  head_fisheye_2         - Head fisheye camera 2" << std::endl;
+  std::cout << "  head_TOF3D             - Head TOF 3D camera" << std::endl;
+  std::cout << std::string(60, '=') << std::endl;
+  std::cout << "For camera_id corresponding to different robot configurations, please refer to the interface documentation." << std::endl;
+  std::cout << std::endl;
 }
 
 std::string build_rtsp_url(const std::string &ip, const std::string &camera_id) {

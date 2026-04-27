@@ -100,8 +100,18 @@ def parse_args() -> argparse.Namespace:
     
     if args.camera_id is None:
         print()
-        print("camera_id is required. Please provide it via command line argument.")
-        print("Please refer to the interface description for available camera IDs")
+        print("\n" + "="*60)
+        print("Available Camera IDs:")
+        print("="*60)
+        print("  head_monocular_centra  - 头部单目中央相机")
+        print("  head_stereo_left       - 头部双目左相机")
+        print("  head_stereo_right      - 头部双目右相机")
+        print("  head_fisheye_1         - 头部鱼眼相机 1")
+        print("  head_fisheye_2         - 头部鱼眼相机 2")
+        print("  head_TOF3D             - 头部 TOF 3D 相机")
+        print("="*60)
+        print("For camera_id corresponding to different robot configurations, please refer to the interface documentation.")
+        print("")
         args.camera_id = input("Please enter camera ID : ").strip()
         if not args.camera_id:
             sys.exit(1)
