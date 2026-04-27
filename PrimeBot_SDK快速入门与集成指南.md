@@ -185,6 +185,7 @@ ros2 service list
 >
 > **提示**：虽然此时您可以查看到所有的通道，但因为没有编译 SDK，您将无法使用 `ros2 topic echo` 实际查看需要自定义消息类型（如 `aimdk_msgs`）的数据内容。
 
+---
 
 #### 2.1.4 用户可操作目录
 
@@ -200,6 +201,8 @@ ros2 service list
 - `/home/run` 目录：作为运行时工作目录，适合存放程序运行产生的日志、缓存、配置输出等临时数据。建议用于开发调试阶段的数据持久化。
 
 > **注意**：请勿在系统其他目录（如 `/usr`、`/etc` 等）进行随意写入操作，以免影响系统稳定性或导致服务异常。
+
+---
 
 #### 2.1.5 三方库与编译依赖
 
@@ -248,7 +251,9 @@ sudo apt install -y \
 ```bash
 pip3 install numpy opencv-python nanobind scikit-build-core
 ```
+
 ---
+
 ### 2.2 安装与编译
 #### 2.2.1 编译操作
 在确认系统和通讯环境就绪后，我们需要将 SDK 源代码编译为 ROS2 运行环境可识别的包和自定义消息格式。以下是完整的解压、编译与环境加载流程：
@@ -286,7 +291,9 @@ timeout 5 ros2 topic echo /aima/hal/pmu/state --once
 ```
 - **正常**：输出对应的数据报文（如电压、电流、电量百分比等）。
 - **异常**：5 秒无输出（超时退出）或报错 → 参考 [常见问题：数据收发异常排查](#42-数据收发异常排查)
+
 ---
+
 #### 2.2.2 命令行交互验证
 以下为通过原生 ROS2 命令行直接调用机器人接口的示例，可用于快速验证 Topic 和 Service 是否正常工作。
 
@@ -347,7 +354,9 @@ ros2 service call /aimdk_5Fmsgs/srv/PlayTts aimdk_msgs/srv/PlayTts \
     aimdk_msgs.srv.PlayTts_Response(header=..., tts_resp=...)
   ```
 - **异常**：如果命令卡在 `waiting for service to become available...` 阶段，或者直接提示 `Service not available`，请参考 [常见问题：数据收发异常排查](#42-数据收发异常排查)。
+
 ---
+
 ### 2.3 运行示例
 每次打开新终端，运行示例前需先加载环境：
 ```bash
@@ -363,7 +372,8 @@ ros2 run aimdk_examples_cpp demo
 ```
 
 > **注意**：若修改了 C++ 示例源码，请重新执行 [2.2.1 编译操作](#221-编译操作) 中的 **第 2 步：编译 SDK**，后根据本章节操作重新运行示例。
-***
+
+---
 
 ## 3. SDK 开发集成指南（Python & C++）
 本章节将指导您基于 SDK 进行二次开发，包括两种典型场景：**直接在 SDK 内部新建模块**（推荐新手或小型工程），或**将 SDK 接入您已有的独立项目**（推荐复杂或已有项目）。根据您使用的编程语言不同，分为 **Python** 和 **C++** 两种开发流程。
@@ -371,6 +381,7 @@ ros2 run aimdk_examples_cpp demo
 > 1. 完成环境设置 [2.1.2 系统环境](#212-系统环境) 
 > 2. 完成SDK编译 [2.2.1 编译操作](#221-编译操作) 
 **💡 建议**：在正式开发前，先通过 [2.3 运行示例](#23-运行示例) 验证通讯与示例正常运行，可帮助您在开发阶段更快定位问题根因。
+
 ---
 
 ### 3.1 Python 开发集成
@@ -598,7 +609,9 @@ my_project/
 3. **多网卡冲突**：如果 PC 同时连接了多个网络（例如插着网线的同时连着 WiFi），DDS 初始化时可能绑定到了错误的网卡（如无线网卡）。此时 DDS 发现报文无法到达机器人局域网。**强烈建议在网线直连时，临时禁用其他无关网卡（如断开 WiFi 或关闭手机热点）**。
 
 > **参考**：关于更深度的跨网段或多复杂的 DDS 发现配置，可参阅官方指南 [ROS 2 Installation Troubleshooting（含多播与多网卡冲突章节）](https://docs.ros.org/en/humble/How-To-Guides/Installation-Troubleshooting.html#enable-multicast)。
+
 ---
+
 ### 5.2 数据收发异常排查
 
 **Q: 节点能看到，但 `ros2 topic echo` 超时无输出，或者 SDK 提示 `Service not available`？**
@@ -610,7 +623,9 @@ my_project/
    ```
 2. **环境变量未加载（报错 Cannot determine type）**：在对特定自定义消息进行操作时，如果当前终端没有先执行 `source /path/to/your/primebot_sdk/install/setup.bash`（需替换为您实际路径），电脑环境里就不存在该消息协议，无法做二进制的反序列化导致报错。
 3. **消息按事件触发（无源数据）**：部分 Topic（如触摸事件），只有在发生物理接触时才会发送数据产生流量。如果您此时监听该 Topic，可能只需实际触发一次（如摸一下机器人头部）即可触发数据产生。
+
 ---
+
 ### 5.3 编译异常排查
 
 **Q: 执行 `colcon build` 编译报错（如提示编译失败或缺少依赖）？**
@@ -621,7 +636,9 @@ my_project/
 3. **C++ 编译器版本过低**：SDK 所用到的现代 C++ 特性需要 `g++` 支持。由于推荐系统为 Ubuntu 22.04，系统自带的默认编译器即满足要求，通常不会因此报错。
 
 > **参考**：更多关于底层构建工具配置的细节，可参阅官方指南 [Colcon documentation](https://design.ros2.org/articles/build_tool.html)。
+
 ---
+
 ### 5.4 机器人域配置
 
 **Q: 同一局域网有多台机器人，如何区分？**
@@ -629,7 +646,9 @@ my_project/
 - 为每台机器人配置不同的 `ROS_DOMAIN_ID`。
 
 > **参考**：有关环境隔离机制的详细说明，请参阅官方指南 [The ROS_DOMAIN_ID](https://docs.ros.org/en/humble/Concepts/Intermediate/About-Domain-ID.html)。
+
 ---
+
 ### 5.5 colcon 安装异常排查
 
 **Q: 执行 `sudo apt install` 失败或提示“无法定位软件包”？**
@@ -656,6 +675,7 @@ my_project/
    ```
 
 ---
+
 ### 5.6 登录与设置相关
 
 **Q: 如何通过 SSH 登录机器人底层板卡？**
