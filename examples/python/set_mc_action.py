@@ -36,6 +36,9 @@ from rclpy.node import Node
 from aimdk_msgs.msg import CommonRequest, CommonState, McAction, McActionCommand, McActionStatus, RequestHeader
 from aimdk_msgs.srv import GetMcAction, SetMcAction, SetMcMotion
 
+SERVICE_CALL_TIMEOUT_SEC = 2.0
+MAX_RETRY_COUNT = 3
+
 
 class SetMcActionClient(Node):
     def __init__(self):
@@ -59,6 +62,26 @@ class SetMcActionClient(Node):
             f'type={self.type} action_desc={self.action_desc} '
             f'motion={self.motion} interrupt={self.interrupt}'
         )
+
+    def call_service_with_retry(self, client, request, service_name: str, timeout_sec=None, max_retries=None):
+        """带重试机制的服务调用"""
+        if timeout_sec is None:
+            timeout_sec = SERVICE_CALL_TIMEOUT_SEC
+        if max_retries is None:
+            max_retries = MAX_RETRY_COUNT
+            
+        for i in range(max_retries):
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+
+            if future.done():
+                return future
+
+            self.get_logger().info(f'{service_name} attempt {i+1}/{max_retries} timed out, retrying...')
+            time.sleep(0.2)
+        
+        self.get_logger().error(f'{service_name} failed after {max_retries} attempts')
+        return None
 
     def execute(self) -> bool:
         if not self.validate_parameters():
@@ -184,10 +207,11 @@ class SetMcActionClient(Node):
 
             self.get_logger().info(f'Sending request: action_desc={action_desc}')
             request.header.stamp = self.get_clock().now().to_msg()
-            future = self.set_action_client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-
-            if not future.done():
+            
+            future = self.call_service_with_retry(
+                self.set_action_client, request, "SetMcAction"
+            )
+            if future is None:
                 current_action_id, current_action_desc, current_status = self.get_action_status()
                 if current_action_desc == action_desc:
                     self.get_logger().warning(
@@ -196,8 +220,6 @@ class SetMcActionClient(Node):
                         f'status={current_status}'
                     )
                     return True
-
-                self.get_logger().error('Service call failed or timed out.')
                 return False
 
             response = future.result()
@@ -210,8 +232,6 @@ class SetMcActionClient(Node):
                         f'status={current_status}'
                     )
                     return True
-
-                self.get_logger().error('Service call failed or timed out.')
                 return False
 
             if response.response.status.value == CommonState.SUCCESS:
@@ -282,7 +302,7 @@ class SetMcActionClient(Node):
                 self.get_logger().warning(
                     'SetMcMotion request attempt '
                     f'{attempt}/{max_attempts} was not accepted: '
-                    f'code={code} status={status} task_id={task_id}'
+                    f'code={code} state={state} task_id={task_id}'
                 )
 
             self.get_logger().error(
@@ -368,10 +388,10 @@ class SetMcActionClient(Node):
             request.request = CommonRequest()
             request.request.header.stamp = self.get_clock().now().to_msg()
 
-            future = self.get_client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-
-            if not future.done():
+            future = self.call_service_with_retry(
+                self.get_client, request, "GetMcAction"
+            )
+            if future is None:
                 self.get_logger().warning(
                     'Get current action request service call failed or timed out.'
                 )

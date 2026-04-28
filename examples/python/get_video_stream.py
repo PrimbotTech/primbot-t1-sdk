@@ -101,7 +101,7 @@ def parse_args() -> argparse.Namespace:
     if args.camera_id is None:
         print()
         print("\n" + "="*60)
-        print("Available Camera IDs:")
+        print("The list of Q series Camera IDs is as follows:")
         print("="*60)
         print("  head_monocular_centra  - 头部单目中央相机")
         print("  head_stereo_left       - 头部双目左相机")

@@ -12,6 +12,7 @@ Example:
 
 import rclpy
 import rclpy.logging
+import time
 from rclpy.node import Node
 
 from aimdk_msgs.msg import CommonRequest, CommonState
@@ -84,8 +85,16 @@ class PlayAudioFileClient(Node):
                 f"weight={self.priority_weight}"
             )
 
-            future = self.client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+            for i in range(3):
+                future = self.client.call_async(request)
+                rclpy.spin_until_future_complete(self, future, timeout_sec=5)
+
+                if future.done():
+                    break
+
+                self.get_logger().info(f'trying ... [{i}]')
+                time.sleep(0.2)
+            
             if not future.done():
                 self.get_logger().error("PlayAudioFile call failed or timed out.")
                 return False

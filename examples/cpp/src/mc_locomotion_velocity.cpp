@@ -41,6 +41,9 @@
 #include <thread>
 #include <vector>
 
+constexpr double kServiceCallTimeoutSec = 2.0;
+constexpr int kMaxRetryCount = 3;
+
 class DirectVelocityControl : public rclcpp::Node {
 public:
   DirectVelocityControl() : Node("direct_velocity_control") {
@@ -79,6 +82,38 @@ public:
         std::bind(&DirectVelocityControl::publish_velocity, this));
   }
 
+  // Generic retry function for service calls
+  template <typename ServiceT>
+  typename rclcpp::Client<ServiceT>::SharedFuture
+  call_service_with_retry(
+      typename rclcpp::Client<ServiceT>::SharedPtr client,
+      typename ServiceT::Request::SharedPtr request,
+      const std::string &service_name,
+      std::chrono::milliseconds timeout = std::chrono::milliseconds(
+          static_cast<int>(kServiceCallTimeoutSec * 1000)),
+      int max_retries = kMaxRetryCount) {
+    
+    for (int i = 0; i < max_retries; ++i) {
+      auto future = client->async_send_request(request);
+      auto retcode = rclcpp::spin_until_future_complete(
+          this->shared_from_this(), future, timeout);
+
+      if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+        return future;
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "%s attempt %d/%d timed out, retrying...",
+                  service_name.c_str(), i + 1, max_retries);
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    RCLCPP_ERROR(this->get_logger(),
+                 "%s failed after %d attempts",
+                 service_name.c_str(), max_retries);
+    return typename rclcpp::Client<ServiceT>::SharedFuture();
+  }
+
   bool register_input_source() {
     if (!wait_for_service(set_client_, "/aimdk_5Fmsgs/srv/SetMcInputSource")) {
       return false;
@@ -91,14 +126,12 @@ public:
     request->input_source.priority = 80;
     request->input_source.timeout = 1000;
 
-    auto timeout = std::chrono::milliseconds(2000);
-
     request->request.header.stamp = this->now();
-    auto future = set_client_->async_send_request(request);
-    auto retcode = rclcpp::spin_until_future_complete(
-        this->shared_from_this(), future, timeout);
-    if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
-      RCLCPP_ERROR(this->get_logger(), "SetMcInputSource failed or timed out");
+    auto future = call_service_with_retry<aimdk_msgs::srv::SetMcInputSource>(
+        set_client_, request, "SetMcInputSource");
+    
+    if (!future.valid()) {
+      RCLCPP_ERROR(this->get_logger(), "SetMcInputSource failed after retries");
       return false;
     }
 
@@ -122,12 +155,11 @@ public:
     request->request = aimdk_msgs::msg::CommonRequest();
     request->request.header.stamp = this->now();
 
-    auto timeout = std::chrono::milliseconds(2000);
-    auto future = get_client_->async_send_request(request);
-    auto retcode = rclcpp::spin_until_future_complete(
-        this->shared_from_this(), future, timeout);
-    if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
-      RCLCPP_WARN(this->get_logger(), "GetCurrentInputSource timed out");
+    auto future = call_service_with_retry<aimdk_msgs::srv::GetCurrentInputSource>(
+        get_client_, request, "GetCurrentInputSource");
+    
+    if (!future.valid()) {
+      RCLCPP_WARN(this->get_logger(), "GetCurrentInputSource failed after retries");
       return false;
     }
 
@@ -216,11 +248,13 @@ public:
   bool get_action_status(ActionInfo &info) {
     auto request = std::make_shared<aimdk_msgs::srv::GetMcAction::Request>();
     request->request.header.stamp = this->now();
-    auto future = get_action_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(shared_from_this(), future,
-                                           std::chrono::seconds(2)) !=
-        rclcpp::FutureReturnCode::SUCCESS)
+    
+    auto future = call_service_with_retry<aimdk_msgs::srv::GetMcAction>(
+        get_action_client_, request, "GetMcAction");
+    
+    if (!future.valid()) {
       return false;
+    }
 
     auto res = future.get();
     if (!res) return false;
@@ -235,11 +269,13 @@ public:
     request->command.action_desc = desc;
     RCLCPP_INFO(this->get_logger(), "Requesting state switch to: %s",
                 desc.c_str());
-    auto future = set_action_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(shared_from_this(), future,
-                                           std::chrono::seconds(2)) !=
-        rclcpp::FutureReturnCode::SUCCESS)
+    
+    auto future = call_service_with_retry<aimdk_msgs::srv::SetMcAction>(
+        set_action_client_, request, "SetMcAction");
+    
+    if (!future.valid()) {
       return false;
+    }
 
     auto res = future.get();
     return res && res->response.status.value ==

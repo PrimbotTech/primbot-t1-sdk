@@ -9,6 +9,8 @@ Usage Note:
 """
 
 import rclpy
+import time
+
 import rclpy.logging
 from rclpy.node import Node
 from rclpy.parameter import Parameter
@@ -82,8 +84,15 @@ class PlayEmotionClient(Node):
             f"emotion_ids={emotion_ids}, file_paths={file_paths}"
         )
 
-        future = self.client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        for i in range(3):
+            future = self.client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+
+            if future.done():
+                break
+
+            self.get_logger().info(f'trying ... [{i}]')
+            time.sleep(0.2)
 
         if not future.done():
             return False

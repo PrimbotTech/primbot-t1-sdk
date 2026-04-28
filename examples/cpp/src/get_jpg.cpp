@@ -43,6 +43,7 @@
 #include <signal.h>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace {
@@ -53,12 +54,13 @@ constexpr char kDefaultOutputFile[] = "/tmp/camera_capture.jpg";
 constexpr int kDefaultRequestTimeoutMs = 5000;
 constexpr int kServiceWaitSeconds = 2;
 constexpr int kMinCallTimeoutMs = 6000;
+constexpr int kMaxRetryCount = 3;
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
 std::string get_camera_id_from_user() {
   std::cout << "\n" << std::string(60, '=') << std::endl;
-  std::cout << "Available Camera IDs:" << std::endl;
+  std::cout << "The list of Q series Camera IDs is as follows:" << std::endl;
   std::cout << std::string(60, '=') << std::endl;
   std::cout << "  head_monocular_centra  - Head monocular central camera" << std::endl;
   std::cout << "  head_stereo_left       - Head stereo left camera" << std::endl;
@@ -161,19 +163,31 @@ public:
                 camera_id_.empty() ? "(default)" : camera_id_.c_str(),
                 request->timeout_ms);
 
+    // Retry mechanism: up to 3 attempts
     auto future = client_->async_send_request(request);
     const auto call_timeout = std::chrono::milliseconds(
         std::max(kMinCallTimeoutMs, timeout_ms_ + 1000));
-    const auto retcode = rclcpp::spin_until_future_complete(
-        shared_from_this(), future, call_timeout);
+    
+    bool completed = false;
+    for (int i = 0; i < kMaxRetryCount; ++i) {
+      const auto retcode = rclcpp::spin_until_future_complete(
+          shared_from_this(), future, call_timeout);
 
-    if (retcode == rclcpp::FutureReturnCode::INTERRUPTED) {
-      RCLCPP_WARN(this->get_logger(),
-                  "CaptureJpegImage interrupted before completion.");
-      return false;
+      if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+        completed = true;
+        break;
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "CaptureJpegImage attempt %d/%d timed out, retrying...",
+                  i + 1, kMaxRetryCount);
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      
+      // Re-send request for retry
+      future = client_->async_send_request(request);
     }
 
-    if (retcode == rclcpp::FutureReturnCode::TIMEOUT) {
+    if (!completed) {
       RCLCPP_ERROR(this->get_logger(),
                    "CaptureJpegImage timed out after %lld ms.",
                    static_cast<long long>(call_timeout.count()));
