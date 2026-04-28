@@ -8,6 +8,10 @@
 #include <iostream>
 #include <memory>
 #include <signal.h>
+#include <thread>
+
+constexpr int kMaxRetryCount = 3;
+constexpr std::chrono::milliseconds kServiceCallTimeout(2000);
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -59,19 +63,41 @@ public:
                   static_cast<unsigned int>(request->b),
                   static_cast<unsigned int>(request->period));
 
-      const std::chrono::milliseconds timeout(2000);
+      // Retry mechanism: up to 3 attempts
       request->request.header.stamp = this->now();
       auto future = client_->async_send_request(request);
-      auto retcode = rclcpp::spin_until_future_complete(
-          shared_from_this(), future, timeout);
-      if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
+      bool completed = false;
+      
+      for (int i = 0; i < kMaxRetryCount; ++i) {
+        auto retcode = rclcpp::spin_until_future_complete(
+            shared_from_this(), future, kServiceCallTimeout);
+        
+        if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+          completed = true;
+          break;
+        }
+
+        RCLCPP_INFO(this->get_logger(),
+                    "LedStripCommand attempt %d/%d timed out, retrying...",
+                    i + 1, kMaxRetryCount);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        
+        // Re-send request for retry
+        future = client_->async_send_request(request);
+      }
+
+      if (!completed) {
         RCLCPP_ERROR(this->get_logger(),
-                     "LedStripCommand service timeout after %ld ms.",
-                     timeout.count());
+                     "LedStripCommand service timeout.");
         return false;
       }
 
       auto response = future.get();
+      if (!response) {
+        RCLCPP_ERROR(this->get_logger(),
+                     "LedStripCommand service call failed.");
+        return false;
+      }
       
       const auto code = response->header.header.code;  
       const auto status_value = response->header.status.value; 

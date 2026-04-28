@@ -30,6 +30,10 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <thread>
+
+constexpr int kMaxRetryCount = 3;
+constexpr std::chrono::seconds kServiceCallTimeout(5);
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -90,14 +94,39 @@ class PlayAudioFileClient : public rclcpp::Node
                 "ch=%d, sr=%d, fmt=%s, coding=%s, priority=%d, weight=%d",
                 request->file.file_name.c_str(), request->file.file_path.c_str(), request->file.pkg_name.c_str(), channels_, sample_rate_, sample_format_.c_str(), coding_format_.c_str(), priority_, priority_weight_);
 
-    auto future  = client_->async_send_request(request);
-    auto retcode = rclcpp::spin_until_future_complete(shared_from_this(), future, std::chrono::seconds(5));
-    if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
+    // Retry mechanism: up to 3 attempts
+    auto future = client_->async_send_request(request);
+    bool completed = false;
+    
+    for (int i = 0; i < kMaxRetryCount; ++i) {
+      auto retcode = rclcpp::spin_until_future_complete(
+          shared_from_this(), future, kServiceCallTimeout);
+      
+      if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+        completed = true;
+        break;
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "PlayAudioFile attempt %d/%d timed out, retrying...",
+                  i + 1, kMaxRetryCount);
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      
+      // Re-send request for retry
+      future = client_->async_send_request(request);
+    }
+
+    if (!completed) {
       RCLCPP_ERROR(this->get_logger(), "PlayAudioFile call failed or timed out.");
       return false;
     }
 
     const auto response = future.get();
+    if (!response) {
+      RCLCPP_ERROR(this->get_logger(), "PlayAudioFile call failed or timed out.");
+      return false;
+    }
+
     const auto code     = response->response.header.code;
     const auto status   = response->response.status.value;
     // Treat code==0 or status==SUCCESS as success.

@@ -32,7 +32,11 @@
 #include <exception>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
+
+constexpr int kMaxRetryCount = 3;
+constexpr std::chrono::seconds kServiceCallTimeout(2);
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -108,18 +112,46 @@ class PlayEmotionClient : public rclcpp::Node
 
     RCLCPP_INFO(this->get_logger(), "Sending PlayEmotion request: type=%s", type.c_str());
 
+    // Retry mechanism: up to 3 attempts
     auto future = client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(shared_from_this(), future, std::chrono::seconds(2)) != rclcpp::FutureReturnCode::SUCCESS)
+    bool completed = false;
+    
+    for (int i = 0; i < kMaxRetryCount; ++i) {
+      auto retcode = rclcpp::spin_until_future_complete(
+          shared_from_this(), future, kServiceCallTimeout);
+      
+      if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+        completed = true;
+        break;
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "PlayEmotion attempt %d/%d timed out, retrying...",
+                  i + 1, kMaxRetryCount);
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      
+      // Re-send request for retry
+      future = client_->async_send_request(request);
+    }
+
+    if (!completed) {
       return false;
+    }
 
     auto res    = future.get();
+    if (!res) {
+      return false;
+    }
+    
     auto code   = res->header.header.code;
     auto status = res->header.status.value;
 
     if (code == 0 || status == aimdk_msgs::msg::CommonState::SUCCESS) {
-      RCLCPP_INFO(this->get_logger(), "Request accepted (code=%ld).", code);
+      RCLCPP_INFO(this->get_logger(), "Request accepted (code=%ld, status=%d).", code, status);
       return true;
     }
+    
+    RCLCPP_WARN(this->get_logger(), "Request rejected by service (code=%ld, status=%d).", code, status);
     return false;
   }
 

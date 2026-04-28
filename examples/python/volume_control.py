@@ -68,10 +68,16 @@ class VolumeControlClient(Node):
         return True
 
     def _call_service(self, client, request, service_name: str):
-        future = client.call_async(request)
-        rclpy.spin_until_future_complete(
-            self, future, timeout_sec=SERVICE_CALL_TIMEOUT_SEC
-        )
+        for i in range(3):
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=SERVICE_CALL_TIMEOUT_SEC)
+
+            if future.done():
+                break
+
+            self.get_logger().info(f'trying ... [{i}]')
+            time.sleep(0.2)
+
         if not future.done():
             self.get_logger().error(
                 f"{service_name} timed out after "

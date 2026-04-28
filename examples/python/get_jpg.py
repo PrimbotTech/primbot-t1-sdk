@@ -29,6 +29,7 @@ Examples:
 
 from pathlib import Path
 import sys
+import time
 
 import rclpy
 import rclpy.logging
@@ -58,7 +59,7 @@ def prepare_output_path(output_file: str) -> Path:
 def get_camera_id_from_user() -> str:
     """Interactively get camera_id from user input."""
     print("\n" + "="*60)
-    print("Available Camera IDs:")
+    print("The list of Q series Camera IDs is as follows:")
     print("="*60)
     print("  head_monocular_centra  - 头部单目中央相机")
     print("  head_stereo_left       - 头部双目左相机")
@@ -135,10 +136,17 @@ class CaptureJpegClient(Node):
             f"Sending CaptureJpegImage request: timeout_ms={request.timeout_ms}"
         )
 
-        future = self.client.call_async(request)
-        call_timeout_sec = max(MIN_CALL_TIMEOUT_MS, self.timeout_ms + 1000) / 1000.0
-        rclpy.spin_until_future_complete(self, future, timeout_sec=call_timeout_sec)
+        for i in range(3):
+            future = self.client.call_async(request)
+            call_timeout_sec = max(MIN_CALL_TIMEOUT_MS, self.timeout_ms + 1000) / 1000.0
+            rclpy.spin_until_future_complete(self, future, timeout_sec=call_timeout_sec)
 
+            if future.done():
+                break
+
+            self.get_logger().info(f'trying ... [{i}]')
+            time.sleep(0.2)
+            
         if not future.done():
             self.get_logger().error(
                 f"CaptureJpegImage timed out after {int(call_timeout_sec * 1000)} ms."

@@ -42,6 +42,9 @@
 #include <string>
 #include <thread>
 
+constexpr double kServiceCallTimeoutSec = 2.0;
+constexpr int kMaxRetryCount = 3;
+
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
 void signal_handler(int signal) {
@@ -212,6 +215,38 @@ private:
     return true;
   }
 
+  // Generic retry function for service calls
+  template <typename ServiceT>
+  typename rclcpp::Client<ServiceT>::SharedFuture
+  call_service_with_retry(
+      typename rclcpp::Client<ServiceT>::SharedPtr client,
+      typename ServiceT::Request::SharedPtr request,
+      const std::string &service_name,
+      std::chrono::milliseconds timeout = std::chrono::milliseconds(
+          static_cast<int>(kServiceCallTimeoutSec * 1000)),
+      int max_retries = kMaxRetryCount) {
+    
+    for (int i = 0; i < max_retries; ++i) {
+      auto future = client->async_send_request(request);
+      auto retcode = rclcpp::spin_until_future_complete(
+          this->shared_from_this(), future, timeout);
+
+      if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+        return future;
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "%s attempt %d/%d timed out, retrying...",
+                  service_name.c_str(), i + 1, max_retries);
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    }
+
+    RCLCPP_ERROR(this->get_logger(),
+                 "%s failed after %d attempts",
+                 service_name.c_str(), max_retries);
+    return typename rclcpp::Client<ServiceT>::SharedFuture();
+  }
+
   bool set_action(const std::string &action_desc) {
     try {
       auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
@@ -222,11 +257,10 @@ private:
       RCLCPP_INFO(this->get_logger(), "Sending request: action_desc=%s",
                   action_desc.c_str());
 
-      auto future = set_action_client_->async_send_request(request);
-      auto retcode = rclcpp::spin_until_future_complete(
-          shared_from_this(), future, std::chrono::seconds(2));
+      auto future = call_service_with_retry<aimdk_msgs::srv::SetMcAction>(
+          set_action_client_, request, "SetMcAction");
 
-      if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
+      if (!future.valid()) {
         ActionInfo info;
         if (get_action_status(info) && info.action_desc == action_desc) {
           RCLCPP_WARN(this->get_logger(),
@@ -236,7 +270,6 @@ private:
           return true;
         }
 
-        RCLCPP_ERROR(this->get_logger(), "Service call failed or timed out.");
         return false;
       }
 
@@ -389,11 +422,10 @@ private:
       request->request = aimdk_msgs::msg::CommonRequest();
       request->request.header.stamp = this->now();
 
-      auto future = get_client_->async_send_request(request);
-      auto retcode = rclcpp::spin_until_future_complete(
-          shared_from_this(), future, std::chrono::seconds(2));
+      auto future = call_service_with_retry<aimdk_msgs::srv::GetMcAction>(
+          get_client_, request, "GetMcAction");
 
-      if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
+      if (!future.valid()) {
         RCLCPP_WARN(this->get_logger(),
                     "Get current action request service call failed or timed "
                     "out.");

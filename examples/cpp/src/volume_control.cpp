@@ -16,6 +16,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <thread>
 
 using namespace std::chrono_literals;
 
@@ -32,6 +33,7 @@ constexpr char kTtsText[] =
 constexpr auto kStepInterval        = 5s;  // Delay between demo steps
 constexpr auto kServiceWaitInterval = 2s;  // Poll interval while waiting for a service
 constexpr auto kServiceCallTimeout  = 5s;  // Timeout for a single service request
+constexpr int kMaxRetryCount = 3;  // Maximum retry attempts
 
 }  // namespace
 
@@ -125,12 +127,31 @@ class VolumeControlClient : public rclcpp::Node
     const std::shared_ptr<typename ServiceT::Request> &request,
     const char *service_name)
   {
-    auto future = client->async_send_request(request);
-    if (future.wait_for(kServiceCallTimeout) != std::future_status::ready) {
-      RCLCPP_ERROR(this->get_logger(), "%s timed out after %ld ms.", service_name, kServiceCallTimeout.count());
-      return nullptr;
+    // Retry mechanism: up to 3 attempts
+    for (int i = 0; i < kMaxRetryCount; ++i) {
+      auto future = client->async_send_request(request);
+      
+      if (future.wait_for(kServiceCallTimeout) == std::future_status::ready) {
+        try {
+          auto response = future.get();
+          if (response) {
+            return response;
+          }
+        } catch (const std::exception &e) {
+          RCLCPP_ERROR(this->get_logger(), "%s failed: %s", service_name, e.what());
+        }
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "%s attempt %d/%d timed out, retrying...",
+                  service_name, i + 1, kMaxRetryCount);
+      std::this_thread::sleep_for(200ms);
     }
-    return future.get();
+
+    RCLCPP_ERROR(this->get_logger(),
+                 "%s timed out after %d attempts (%ld ms each).",
+                 service_name, kMaxRetryCount, kServiceCallTimeout.count());
+    return nullptr;
   }
 
   void start_demo()

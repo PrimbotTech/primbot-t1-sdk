@@ -123,7 +123,7 @@ std::string prompt_input(const std::string &message, const std::string &default_
 
 void print_camera_list() {
   std::cout << std::string(60, '=') << std::endl;
-  std::cout << "Available Camera IDs:" << std::endl;
+  std::cout << "The list of Q series Camera IDs is as follows:" << std::endl;
   std::cout << std::string(60, '=') << std::endl;
   std::cout << "  head_monocular_centra  - Head monocular central camera" << std::endl;
   std::cout << "  head_stereo_left       - Head stereo left camera" << std::endl;

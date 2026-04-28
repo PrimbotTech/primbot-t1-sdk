@@ -26,6 +26,9 @@ from aimdk_msgs.msg import (
 )
 import sys
 
+SERVICE_CALL_TIMEOUT_SEC = 2.0
+MAX_RETRY_COUNT = 3
+
 class SetMcPresetMotionClient(Node):
     def __init__(self):
         super().__init__('preset_motion_client')
@@ -51,16 +54,41 @@ class SetMcPresetMotionClient(Node):
                 self.get_logger().info(f'Waiting for service {name}...')
         self.get_logger().info('All required services are available.')
 
+    def call_service_with_retry(self, client, request, service_name: str, timeout_sec=None, max_retries=None):
+        if timeout_sec is None:
+            timeout_sec = SERVICE_CALL_TIMEOUT_SEC
+        if max_retries is None:
+            max_retries = MAX_RETRY_COUNT
+            
+        for i in range(max_retries):
+            future = client.call_async(request)
+            rclpy.spin_until_future_complete(self, future, timeout_sec=timeout_sec)
+
+            if future.done():
+                return future
+
+            self.get_logger().info(f'{service_name} attempt {i+1}/{max_retries} timed out, retrying...')
+            time.sleep(0.2)
+        
+        self.get_logger().error(f'{service_name} failed after {max_retries} attempts')
+        return None
+
     def get_action_status(self):
         try:
             request = GetMcAction.Request()
             request.request = CommonRequest()
             request.request.header.stamp = self.get_clock().now().to_msg()
-            future = self.get_action_client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-            if not future.done(): return None, None, None
+            
+            future = self.call_service_with_retry(
+                self.get_action_client, request, "GetMcAction"
+            )
+            if future is None:
+                return None, None, None
+                
             res = future.result()
-            if res is None: return None, None, None
+            if res is None:
+                return None, None, None
+                
             return res.info.current_action.value, res.info.action_desc, res.info.status.value
         except Exception as e:
             self.get_logger().error(f'Error getting action status: {e}')
@@ -76,10 +104,13 @@ class SetMcPresetMotionClient(Node):
             request.command.action_desc = action_desc
             
             self.get_logger().info(f'Requesting state switch to: {action_desc}')
-            future = self.set_action_client.call_async(request)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
             
-            if not future.done(): return False
+            future = self.call_service_with_retry(
+                self.set_action_client, request, "SetMcAction"
+            )
+            if future is None:
+                return False
+                
             res = future.result()
             return res is not None and res.response.status.value == CommonState.SUCCESS
         except Exception as e:
@@ -161,10 +192,13 @@ class SetMcPresetMotionClient(Node):
         request.interrupt = True
 
         self.get_logger().info(f'Sending preset motion request: ID={motion_id}')
-        future = self.preset_client.call_async(request)
-        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
-
-        if not future.done(): return False
+        
+        future = self.call_service_with_retry(
+            self.preset_client, request, "SetMcPresetMotion"
+        )
+        if future is None:
+            return False
+            
         res = future.result()
         if res and res.response.header.code == 0:
             self.get_logger().info(f'Motion request accepted. Task ID: {res.response.task_id}')
