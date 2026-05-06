@@ -14,10 +14,21 @@ file(GLOB_RECURSE msg_files    "*.msg")
 file(GLOB_RECURSE srv_files    "*.srv")
 file(GLOB_RECURSE action_files "*.action")
 
+set(normalized_interface_base "${CMAKE_CURRENT_BINARY_DIR}/rosidl_interfaces")
 set(interface_files)
-foreach(f ${msg_files} ${srv_files} ${action_files})
-  file(RELATIVE_PATH f_rel "${CMAKE_CURRENT_LIST_DIR}" "${f}")
-  list(APPEND interface_files "${f_rel}")
+
+foreach(f ${msg_files})
+  get_filename_component(name "${f}" NAME)
+  set(dst_rel "msg/${name}")
+  configure_file("${f}" "${normalized_interface_base}/${dst_rel}" COPYONLY)
+  list(APPEND interface_files "${normalized_interface_base}:${dst_rel}")
+endforeach()
+
+foreach(f ${srv_files})
+  get_filename_component(name "${f}" NAME)
+  set(dst_rel "srv/${name}")
+  configure_file("${f}" "${normalized_interface_base}/${dst_rel}" COPYONLY)
+  list(APPEND interface_files "${normalized_interface_base}:${dst_rel}")
 endforeach()
 
 rosidl_generate_interfaces(
