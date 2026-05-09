@@ -1,3 +1,28 @@
+/**
+ * @file volume_control.cpp
+ * @brief Volume Control Demo Example Script
+ * 
+ * @description
+ *   This script demonstrates how to control robot audio volume and mute settings using TTS services.
+ *   Includes volume adjustment, mute toggle, and TTS playback demonstration.
+ *   Note: If a volume setting step fails, the script will continue to the next step. Please check the logs for any errors.
+ * 
+ * @prerequisites
+ *   - Robot TTS service must be running
+ *   - Audio output device must be working properly
+ *   - Volume and mute services must be available
+ * 
+ * @usage
+ *   colcon build --packages-select volume_control
+ *   ros2 run volume_control volume_control_client
+ * 
+ * @example
+ *   ros2 run volume_control volume_control_client
+ * 
+ * @parameters
+ *   - None
+ */
+
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/tts_priority_level.hpp"
 #include "aimdk_msgs/srv/get_mute.hpp"
@@ -171,21 +196,20 @@ class VolumeControlClient : public rclcpp::Node
                 "Volume note: on this device a larger value means a smaller "
                 "actual volume.");
 
-    // Get initial volume to restore later
+    // Get initial volume to restore later (optional)
     auto get_init_request = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
     get_init_request->request = aimdk_msgs::msg::CommonRequest();
     get_init_request->request.header.stamp = this->now();
 
     auto get_init_response = call_service<aimdk_msgs::srv::GetVolume>(
       get_volume_client_, get_init_request, "GetVolume");
-    if (!get_init_response) {
-      RCLCPP_ERROR(this->get_logger(), "Failed to get initial volume.");
-      fail_and_shutdown("Failed to get initial volume.");
-      return;
+    if (get_init_response) {
+      original_volume_ = get_init_response->audio_volume;
+      has_original_volume_ = true;
+      RCLCPP_INFO(this->get_logger(), "Initial volume: %u", original_volume_);
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Failed to get initial volume, will skip restoration.");
     }
-
-    original_volume_ = get_init_response->audio_volume;
-    RCLCPP_INFO(this->get_logger(), "Initial volume: %u", original_volume_);
 
     if (!play_tts()) {
       fail_and_shutdown("PlayTts failed.");
@@ -253,32 +277,44 @@ class VolumeControlClient : public rclcpp::Node
     }
 
     bool ok = false;
+    const char* step_name = nullptr;
     switch (current_step) {
       case 0:
-        ok = execute_volume_step(30, "设为默认音量");
+        step_name = "设为默认音量";
+        ok = execute_volume_step(30, step_name);
         break;
       case 1:
-        ok = execute_volume_step(40, "音量调大");
+        step_name = "音量调大";
+        ok = execute_volume_step(40, step_name);
         break;
       case 2:
-        ok = execute_volume_step(20, "音量调小");
+        step_name = "音量调小";
+        ok = execute_volume_step(20, step_name);
         break;
       case 3:
-        ok = execute_mute_step(true, "设置静音");
+        step_name = "设置静音";
+        ok = execute_mute_step(true, step_name);
         break;
       case 4:
-        ok = execute_mute_step(false, "取消静音");
+        step_name = "取消静音";
+        ok = execute_mute_step(false, step_name);
         break;
       case 5:
-        // Restore original volume
-        RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
-        ok = execute_volume_step(original_volume_, "恢复原始音量");
-        if (!ok) {
-          RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
+        // Restore original volume if available
+        step_name = "恢复原始音量";
+        if (has_original_volume_) {
+          RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
+          ok = execute_volume_step(original_volume_, step_name);
+          if (!ok) {
+            RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
+          }
+          ok = true;  // Don't fail if restore fails
+        } else {
+          ok = true;  // Skip restoration
         }
-        ok = true;  // Don't fail if restore fails
         break;
       default:
+        step_name = "未知步骤";
         ok = false;
         break;
     }
@@ -290,21 +326,26 @@ class VolumeControlClient : public rclcpp::Node
       if (shutdown_requested_) {
         return;
       }
-      if (ok) {
-        ++step_index_;
-        is_done = step_index_ >= 6;  // 6 steps total (including restore)
-      }
+      // Always advance to next step, even if current step failed
+      ++step_index_;
+      is_done = step_index_ >= 6;  // 6 steps total (including restore)
     }
 
+    // Log error if step failed, but continue to next step
     if (!ok) {
-      fail_and_shutdown("Volume control step failed.");
-      return;
+      RCLCPP_ERROR(this->get_logger(), "Volume control step failed: %s (continuing to next step)", step_name);
     }
 
     if (is_done) {
-      RCLCPP_INFO(this->get_logger(),
-                  "Volume control demo finished. Volume restored to %u, "
-                  "mute=false.", original_volume_);
+      if (has_original_volume_) {
+        RCLCPP_INFO(this->get_logger(),
+                    "Volume control demo finished. Volume restored to %u, "
+                    "mute=false. (Check logs for any failed steps)", original_volume_);
+      } else {
+        RCLCPP_INFO(this->get_logger(),
+                    "Volume control demo finished. Volume restoration skipped "
+                    "(initial volume unknown). (Check logs for any failed steps)");
+      }
       request_stop(0);
       rclcpp::shutdown();
     }
@@ -394,9 +435,9 @@ class VolumeControlClient : public rclcpp::Node
     return true;
   }
 
-  void fail_and_shutdown(const char *reason)
+  void fail_and_shutdown(const char *step_name)
   {
-    RCLCPP_ERROR(this->get_logger(), "%s", reason);
+    RCLCPP_ERROR(this->get_logger(), "Volume control step failed: %s", step_name);
     request_stop(1);
     rclcpp::shutdown();
   }
@@ -424,6 +465,7 @@ class VolumeControlClient : public rclcpp::Node
   bool shutdown_requested_ = false;
   int exit_code_           = 0;
   std::uint32_t original_volume_ = 30;  // Default fallback value
+  bool has_original_volume_ = false;    // Track if we successfully got initial volume
 };
 
 std::shared_ptr<VolumeControlClient> g_node = nullptr;

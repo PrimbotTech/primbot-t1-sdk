@@ -1,5 +1,28 @@
 #!/usr/bin/env python3
 
+"""
+Volume Control Demo Example Script
+
+Description:
+  This script demonstrates how to control robot audio volume and mute settings using TTS services.
+  Includes volume adjustment, mute toggle, and TTS playback demonstration.
+  Note: If a volume setting step fails, the script will continue to the next step. Please check the logs for any errors.
+  
+Prerequisites:
+  - Robot TTS service must be running
+  - Audio output device must be working properly
+  - Volume and mute services must be available
+
+Usage:
+  python3 volume_control.py
+
+Example:
+  python3 volume_control.py
+
+Parameters:
+  - None 
+"""
+
 import time
 
 import rclpy
@@ -242,49 +265,54 @@ class VolumeControlClient(Node):
             "Volume note: on this device a larger value means a smaller actual volume."
         )
 
-        # Get initial volume to restore later
+        # Get initial volume to restore later (optional)
+        original_volume = None
         get_init_request = GetVolume.Request()
         get_init_request.request = self._build_common_request()
         get_init_response = self._call_service(
             self.get_volume_client, get_init_request, "GetVolume"
         )
-        if get_init_response is None:
-            self.get_logger().error("Failed to get initial volume.")
-            return False
-
-        original_volume = get_init_response.audio_volume
-        self.get_logger().info(f"Initial volume: {original_volume}")
+        if get_init_response is not None:
+            original_volume = get_init_response.audio_volume
+            self.get_logger().info(f"Initial volume: {original_volume}")
+        else:
+            self.get_logger().warning("Failed to get initial volume, will skip restoration.")
 
         if not self.play_tts():
             self.get_logger().error("PlayTts failed.")
             return False
 
         steps = [
-            lambda: self.execute_volume_step(30, "设为默认音量"),
-            lambda: self.execute_volume_step(40, "音量调大"),
-            lambda: self.execute_volume_step(20, "音量调小"),
-            lambda: self.execute_mute_step(True, "设置静音"),
-            lambda: self.execute_mute_step(False, "取消静音"),
+            ("设为默认音量", lambda: self.execute_volume_step(30, "设为默认音量")),
+            ("音量调大", lambda: self.execute_volume_step(40, "音量调大")),
+            ("音量调小", lambda: self.execute_volume_step(20, "音量调小")),
+            ("设置静音", lambda: self.execute_mute_step(True, "设置静音")),
+            ("取消静音", lambda: self.execute_mute_step(False, "取消静音")),
         ]
 
         self.get_logger().info(
             f"TTS accepted. The first control step will run in {int(STEP_INTERVAL_SEC)} seconds."
         )
 
-        for step in steps:
+        for step_name,step_func in steps:
             time.sleep(STEP_INTERVAL_SEC)
-            if not step():
-                self.get_logger().error("Volume control step failed.")
-                return False
+            if not step_func():
+                self.get_logger().error(f"Volume control step failed: {step_name} (continuing to next step)")
 
-        # Restore original volume
-        self.get_logger().info(f"Restoring original volume: {original_volume}")
-        if not self.execute_volume_step(original_volume, "恢复原始音量"):
-            self.get_logger().warning("Failed to restore original volume.")
-
-        self.get_logger().info(
-            f"Volume control demo finished. Volume restored to {original_volume}, mute=false."
-        )
+        # Restore original volume if available
+        if original_volume is not None:
+            self.get_logger().info(f"Restoring original volume: {original_volume}")
+            if not self.execute_volume_step(original_volume, "恢复原始音量"):
+                self.get_logger().warning("Failed to restore original volume.")
+            self.get_logger().info(
+                f"Volume control demo finished. Volume restored to {original_volume}, mute=false. "
+                f"(Check logs for any failed steps)"
+            )
+        else:
+            self.get_logger().info(
+                "Volume control demo finished. Volume restoration skipped "
+                "(initial volume unknown). (Check logs for any failed steps)"
+            )
         return True
 
 
