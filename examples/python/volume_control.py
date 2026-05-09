@@ -242,6 +242,19 @@ class VolumeControlClient(Node):
             "Volume note: on this device a larger value means a smaller actual volume."
         )
 
+        # Get initial volume to restore later
+        get_init_request = GetVolume.Request()
+        get_init_request.request = self._build_common_request()
+        get_init_response = self._call_service(
+            self.get_volume_client, get_init_request, "GetVolume"
+        )
+        if get_init_response is None:
+            self.get_logger().error("Failed to get initial volume.")
+            return False
+
+        original_volume = get_init_response.audio_volume
+        self.get_logger().info(f"Initial volume: {original_volume}")
+
         if not self.play_tts():
             self.get_logger().error("PlayTts failed.")
             return False
@@ -264,8 +277,13 @@ class VolumeControlClient(Node):
                 self.get_logger().error("Volume control step failed.")
                 return False
 
+        # Restore original volume
+        self.get_logger().info(f"Restoring original volume: {original_volume}")
+        if not self.execute_volume_step(original_volume, "恢复原始音量"):
+            self.get_logger().warning("Failed to restore original volume.")
+
         self.get_logger().info(
-            "Volume control demo finished. Final state: volume=20, mute=false."
+            f"Volume control demo finished. Volume restored to {original_volume}, mute=false."
         )
         return True
 

@@ -171,6 +171,22 @@ class VolumeControlClient : public rclcpp::Node
                 "Volume note: on this device a larger value means a smaller "
                 "actual volume.");
 
+    // Get initial volume to restore later
+    auto get_init_request = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
+    get_init_request->request = aimdk_msgs::msg::CommonRequest();
+    get_init_request->request.header.stamp = this->now();
+
+    auto get_init_response = call_service<aimdk_msgs::srv::GetVolume>(
+      get_volume_client_, get_init_request, "GetVolume");
+    if (!get_init_response) {
+      RCLCPP_ERROR(this->get_logger(), "Failed to get initial volume.");
+      fail_and_shutdown("Failed to get initial volume.");
+      return;
+    }
+
+    original_volume_ = get_init_response->audio_volume;
+    RCLCPP_INFO(this->get_logger(), "Initial volume: %u", original_volume_);
+
     if (!play_tts()) {
       fail_and_shutdown("PlayTts failed.");
       return;
@@ -239,7 +255,7 @@ class VolumeControlClient : public rclcpp::Node
     bool ok = false;
     switch (current_step) {
       case 0:
-        ok = execute_volume_step(30, "设30为默认音量");
+        ok = execute_volume_step(30, "设为默认音量");
         break;
       case 1:
         ok = execute_volume_step(40, "音量调大");
@@ -252,6 +268,15 @@ class VolumeControlClient : public rclcpp::Node
         break;
       case 4:
         ok = execute_mute_step(false, "取消静音");
+        break;
+      case 5:
+        // Restore original volume
+        RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
+        ok = execute_volume_step(original_volume_, "恢复原始音量");
+        if (!ok) {
+          RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
+        }
+        ok = true;  // Don't fail if restore fails
         break;
       default:
         ok = false;
@@ -267,7 +292,7 @@ class VolumeControlClient : public rclcpp::Node
       }
       if (ok) {
         ++step_index_;
-        is_done = step_index_ >= 5;
+        is_done = step_index_ >= 6;  // 6 steps total (including restore)
       }
     }
 
@@ -278,8 +303,8 @@ class VolumeControlClient : public rclcpp::Node
 
     if (is_done) {
       RCLCPP_INFO(this->get_logger(),
-                  "Volume control demo finished. Final state: volume=20, "
-                  "mute=false.");
+                  "Volume control demo finished. Volume restored to %u, "
+                  "mute=false.", original_volume_);
       request_stop(0);
       rclcpp::shutdown();
     }
@@ -398,6 +423,7 @@ class VolumeControlClient : public rclcpp::Node
   bool step_in_progress_   = false;
   bool shutdown_requested_ = false;
   int exit_code_           = 0;
+  std::uint32_t original_volume_ = 30;  // Default fallback value
 };
 
 std::shared_ptr<VolumeControlClient> g_node = nullptr;
