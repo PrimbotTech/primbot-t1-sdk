@@ -1,5 +1,30 @@
 #!/usr/bin/env python3
 
+"""
+Volume Control Demo Example Script
+
+Description:
+  This script demonstrates how to control robot audio volume and mute settings using TTS services.
+  Includes volume adjustment, mute toggle, and TTS playback demonstration.
+  Note: If a volume setting step fails, the script will continue to the next step. Please check the logs for any errors.
+  The original volume is recorded at startup and automatically restored when the demo finishes or Ctrl+C is pressed.
+
+Prerequisites:
+  - Robot TTS service must be running
+  - Audio output device must be working properly
+  - Volume and mute services must be available
+
+Usage:
+  python3 volume_control.py
+
+Example:
+  python3 volume_control.py
+
+Parameters:
+  - None 
+"""
+
+import signal
 import time
 
 import rclpy
@@ -10,11 +35,11 @@ from aimdk_msgs.msg import CommonRequest, TtsPriorityLevel
 from aimdk_msgs.srv import GetMute, GetVolume, PlayTts, SetMute, SetVolume
 
 TTS_TEXT = (
-    "大家好，我是启元机器人Q1。现在为你演示音频控制示例。"
+    "大家好，我是启元机器人。现在为你演示音频控制示例。"
     "接下来，我会先持续播报一段介绍内容，在播报过程中，系统会依次执行设置音量、查询音量、设置静音和查询静音等操作。"
     "你将听到默认音量、音量调小、音量调大、开启静音以及取消静音这几个阶段的变化。"
     "如果整段流程能够顺利完成，就说明启元的TTS播放、音量控制和静音控制链路都已经正常工作。"
-    "感谢你体验启元机器人Q1的音频控制能力。"
+    "感谢你体验启元机器人的音频控制能力。"
 )
 
 STEP_INTERVAL_SEC = 5.0
@@ -42,6 +67,8 @@ class VolumeControlClient(Node):
         )
         self.set_mute_client = self.create_client(SetMute, self.set_mute_service)
         self.get_mute_client = self.create_client(GetMute, self.get_mute_service)
+
+        self.original_volume_ = None
 
         self.get_logger().info("Volume control demo node created.")
 
@@ -242,36 +269,66 @@ class VolumeControlClient(Node):
             "Volume note: on this device a larger value means a smaller actual volume."
         )
 
+        self.original_volume_ = None
+        get_init_request = GetVolume.Request()
+        get_init_request.request = self._build_common_request()
+        get_init_response = self._call_service(
+            self.get_volume_client, get_init_request, "GetVolume"
+        )
+        if get_init_response is not None:
+            self.original_volume_ = get_init_response.audio_volume
+            self.get_logger().info(f"Initial volume: {self.original_volume_}")
+        else:
+            self.get_logger().warning("Failed to get initial volume, will skip restoration.")
+
         if not self.play_tts():
             self.get_logger().error("PlayTts failed.")
             return False
 
         steps = [
-            lambda: self.execute_volume_step(30, "设为默认音量"),
-            lambda: self.execute_volume_step(40, "音量调大"),
-            lambda: self.execute_volume_step(20, "音量调小"),
-            lambda: self.execute_mute_step(True, "设置静音"),
-            lambda: self.execute_mute_step(False, "取消静音"),
+            ("设为默认音量", lambda: self.execute_volume_step(30, "设为默认音量")),
+            ("音量调大", lambda: self.execute_volume_step(40, "音量调大")),
+            ("音量调小", lambda: self.execute_volume_step(20, "音量调小")),
+            ("设置静音", lambda: self.execute_mute_step(True, "设置静音")),
+            ("取消静音", lambda: self.execute_mute_step(False, "取消静音")),
         ]
 
         self.get_logger().info(
             f"TTS accepted. The first control step will run in {int(STEP_INTERVAL_SEC)} seconds."
         )
 
-        for step in steps:
-            time.sleep(STEP_INTERVAL_SEC)
-            if not step():
-                self.get_logger().error("Volume control step failed.")
-                return False
+        try:
+            for step_name, step_func in steps:
+                time.sleep(STEP_INTERVAL_SEC)
+                if not step_func():
+                    self.get_logger().error(f"Volume control step failed: {step_name} (continuing to next step)")
+        except KeyboardInterrupt:
+            pass
 
-        self.get_logger().info(
-            "Volume control demo finished. Final state: volume=20, mute=false."
-        )
+        # Restore original volume if available (normal finish or Ctrl+C)
+        if self.original_volume_ is not None:
+            self.get_logger().info(f"Restoring original volume: {self.original_volume_}")
+            if not self.execute_volume_step(self.original_volume_, "恢复原始音量"):
+                self.get_logger().warning("Failed to restore original volume.")
+            self.get_logger().info(
+                f"Volume control demo finished. Volume restored to {self.original_volume_}, mute=false. "
+                f"(Check logs for any failed steps)"
+            )
+        else:
+            self.get_logger().info(
+                "Volume control demo finished. Volume restoration skipped "
+                "(initial volume unknown). (Check logs for any failed steps)"
+            )
         return True
 
 
 def main(args=None):
     rclpy.init(args=args)
+    # init 之后立即覆盖 ROS2 的 SIGINT 处理器
+    # 阻止 Ctrl+C 触发 rclpy.shutdown()，保持上下文有效以恢复音量
+    def _sigint_handler(sig, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGINT, _sigint_handler)
     node = None
     try:
         node = VolumeControlClient()
@@ -280,6 +337,8 @@ def main(args=None):
             return 1
         ok = node.run_demo()
         return 0 if ok else 1
+    except KeyboardInterrupt:
+        return 0
     except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("volume_control_main").error(
             f"Program exited with exception: {error}"

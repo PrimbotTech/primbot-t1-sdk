@@ -1,3 +1,29 @@
+/**
+ * @file volume_control.cpp
+ * @brief Volume Control Demo Example Script
+ * 
+ * @description
+ *   This script demonstrates how to control robot audio volume and mute settings using TTS services.
+ *   Includes volume adjustment, mute toggle, and TTS playback demonstration.
+ *   Note: If a volume setting step fails, the script will continue to the next step. Please check the logs for any errors.
+ *   The original volume is recorded at startup and automatically restored when the demo finishes or Ctrl+C is pressed.
+ * 
+ * @prerequisites
+ *   - Robot TTS service must be running
+ *   - Audio output device must be working properly
+ *   - Volume and mute services must be available
+ * 
+ * @usage
+ *   colcon build --packages-select volume_control
+ *   ros2 run volume_control volume_control_client
+ * 
+ * @example
+ *   ros2 run volume_control volume_control_client
+ * 
+ * @parameters
+ *   - None
+ */
+
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/tts_priority_level.hpp"
 #include "aimdk_msgs/srv/get_mute.hpp"
@@ -24,11 +50,11 @@ namespace
 {
 
 constexpr char kTtsText[] =
-  "大家好，我是启元机器人Q1。现在为你演示音频控制示例。"
+  "大家好，我是启元机器人。现在为你演示音频控制示例。"
   "接下来，我会先持续播报一段介绍内容，在播报过程中，系统会依次执行设置音量、查询音量、设置静音和查询静音等操作。"
   "你将听到默认音量、音量调小、音量调大、开启静音以及取消静音这几个阶段的变化。"
   "如果整段流程能够顺利完成，就说明启元的TTS播放、音量控制和静音控制链路都已经正常工作。"
-  "感谢你体验启元机器人Q1的音频控制能力。";
+  "感谢你体验启元机器人的音频控制能力。";
 
 constexpr auto kStepInterval        = 5s;  // Delay between demo steps
 constexpr auto kServiceWaitInterval = 2s;  // Poll interval while waiting for a service
@@ -104,8 +130,52 @@ class VolumeControlClient : public rclcpp::Node
 
   void handle_signal(int signal)
   {
-    RCLCPP_INFO(this->get_logger(), "Received signal %d, shutting down...", signal);
+    RCLCPP_INFO(this->get_logger(), "Received signal %d, will restore volume before shutdown.", signal);
+    // 只设标志，不在信号处理器中做服务调用
+    // 服务调用需要 executor spin 才能收到响应，信号处理器中 spin 已被中断
     request_stop(signal);
+  }
+
+  bool is_shutdown_requested() const
+  {
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    return shutdown_requested_;
+  }
+
+  // 在 executor 仍有效的环境下恢复原始音量（Ctrl+C 后由 main 调用）
+  bool restore_original_volume()
+  {
+    if (!has_original_volume_) {
+      return true;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
+
+    auto set_request                  = std::make_shared<aimdk_msgs::srv::SetVolume::Request>();
+    set_request->request              = aimdk_msgs::msg::CommonRequest();
+    set_request->request.header.stamp = this->now();
+    set_request->audio_volume         = original_volume_;
+
+    auto future = set_volume_client_->async_send_request(set_request);
+    auto result = rclcpp::spin_until_future_complete(
+      shared_from_this(), future, 5s);
+
+    if (result == rclcpp::FutureReturnCode::SUCCESS) {
+      try {
+        auto response = future.get();
+        if (response) {
+          RCLCPP_INFO(this->get_logger(),
+                      "Volume restored to %u on interrupt.", original_volume_);
+          return true;
+        }
+      } catch (const std::exception &e) {
+        RCLCPP_WARN(this->get_logger(), "SetVolume failed: %s", e.what());
+      }
+    }
+
+    RCLCPP_WARN(this->get_logger(),
+                "Failed to restore original volume on interrupt.");
+    return false;
   }
 
  private:
@@ -170,6 +240,21 @@ class VolumeControlClient : public rclcpp::Node
     RCLCPP_INFO(this->get_logger(),
                 "Volume note: on this device a larger value means a smaller "
                 "actual volume.");
+
+    // Get initial volume to restore later (optional)
+    auto get_init_request = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
+    get_init_request->request = aimdk_msgs::msg::CommonRequest();
+    get_init_request->request.header.stamp = this->now();
+
+    auto get_init_response = call_service<aimdk_msgs::srv::GetVolume>(
+      get_volume_client_, get_init_request, "GetVolume");
+    if (get_init_response) {
+      original_volume_ = get_init_response->audio_volume;
+      has_original_volume_ = true;
+      RCLCPP_INFO(this->get_logger(), "Initial volume: %u", original_volume_);
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Failed to get initial volume, will skip restoration.");
+    }
 
     if (!play_tts()) {
       fail_and_shutdown("PlayTts failed.");
@@ -237,23 +322,44 @@ class VolumeControlClient : public rclcpp::Node
     }
 
     bool ok = false;
+    const char* step_name = nullptr;
     switch (current_step) {
       case 0:
-        ok = execute_volume_step(30, "设30为默认音量");
+        step_name = "设为默认音量";
+        ok = execute_volume_step(30, step_name);
         break;
       case 1:
-        ok = execute_volume_step(40, "音量调大");
+        step_name = "音量调大";
+        ok = execute_volume_step(40, step_name);
         break;
       case 2:
-        ok = execute_volume_step(20, "音量调小");
+        step_name = "音量调小";
+        ok = execute_volume_step(20, step_name);
         break;
       case 3:
-        ok = execute_mute_step(true, "设置静音");
+        step_name = "设置静音";
+        ok = execute_mute_step(true, step_name);
         break;
       case 4:
-        ok = execute_mute_step(false, "取消静音");
+        step_name = "取消静音";
+        ok = execute_mute_step(false, step_name);
+        break;
+      case 5:
+        // Restore original volume if available
+        step_name = "恢复原始音量";
+        if (has_original_volume_) {
+          RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
+          ok = execute_volume_step(original_volume_, step_name);
+          if (!ok) {
+            RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
+          }
+          ok = true;  // Don't fail if restore fails
+        } else {
+          ok = true;  // Skip restoration
+        }
         break;
       default:
+        step_name = "未知步骤";
         ok = false;
         break;
     }
@@ -265,23 +371,28 @@ class VolumeControlClient : public rclcpp::Node
       if (shutdown_requested_) {
         return;
       }
-      if (ok) {
-        ++step_index_;
-        is_done = step_index_ >= 5;
-      }
+      // Always advance to next step, even if current step failed
+      ++step_index_;
+      is_done = step_index_ >= 6;  // 6 steps total (including restore)
     }
 
+    // Log error if step failed, but continue to next step
     if (!ok) {
-      fail_and_shutdown("Volume control step failed.");
-      return;
+      RCLCPP_ERROR(this->get_logger(), "Volume control step failed: %s (continuing to next step)", step_name);
     }
 
     if (is_done) {
-      RCLCPP_INFO(this->get_logger(),
-                  "Volume control demo finished. Final state: volume=20, "
-                  "mute=false.");
+      if (has_original_volume_) {
+        RCLCPP_INFO(this->get_logger(),
+                    "Volume control demo finished. Volume restored to %u, "
+                    "mute=false. (Check logs for any failed steps)", original_volume_);
+      } else {
+        RCLCPP_INFO(this->get_logger(),
+                    "Volume control demo finished. Volume restoration skipped "
+                    "(initial volume unknown). (Check logs for any failed steps)");
+      }
       request_stop(0);
-      rclcpp::shutdown();
+      // 不在此处调 rclcpp::shutdown()，由 main() 统一处理
     }
   }
 
@@ -369,11 +480,11 @@ class VolumeControlClient : public rclcpp::Node
     return true;
   }
 
-  void fail_and_shutdown(const char *reason)
+  void fail_and_shutdown(const char *step_name)
   {
-    RCLCPP_ERROR(this->get_logger(), "%s", reason);
+    RCLCPP_ERROR(this->get_logger(), "Volume control step failed: %s", step_name);
     request_stop(1);
-    rclcpp::shutdown();
+    // 不在此处调 rclcpp::shutdown()，由 main() 统一处理
   }
 
   rclcpp::CallbackGroup::SharedPtr callback_group_;
@@ -398,6 +509,8 @@ class VolumeControlClient : public rclcpp::Node
   bool step_in_progress_   = false;
   bool shutdown_requested_ = false;
   int exit_code_           = 0;
+  std::uint32_t original_volume_ = 30;  // Default fallback value
+  bool has_original_volume_ = false;    // Track if we successfully got initial volume
 };
 
 std::shared_ptr<VolumeControlClient> g_node = nullptr;
@@ -407,7 +520,7 @@ void signal_handler(int signal)
   if (g_node) {
     g_node->handle_signal(signal);
   }
-  rclcpp::shutdown();
+  // 不在这里调 rclcpp::shutdown()，由 main() 处理清理和音量恢复
 }
 
 int main(int argc, char *argv[])
@@ -420,16 +533,26 @@ int main(int argc, char *argv[])
     g_node = std::make_shared<VolumeControlClient>();
     if (!g_node->initialize()) {
       RCLCPP_ERROR(rclcpp::get_logger("volume_control_main"), "Failed to initialize volume control demo.");
-      const int exit_code = 1;
       g_node.reset();
       rclcpp::shutdown();
-      return exit_code;
+      return 1;
     }
 
     rclcpp::executors::MultiThreadedExecutor executor(
       rclcpp::ExecutorOptions(), 2);
     executor.add_node(g_node);
-    executor.spin();
+
+    // 使用 spin_some 循环替代 executor.spin()
+    // 这样可以定期检查 shutdown 标志，在信号中断后恢复音量
+    while (rclcpp::ok() && !g_node->is_shutdown_requested()) {
+      executor.spin_some(std::chrono::milliseconds(100));
+    }
+
+    // Ctrl+C 中断时：executor 和上下文仍有效，在此恢复音量
+    // 正常完成时：step 5 已恢复，此处再次恢复无副作用
+    if (g_node->is_shutdown_requested()) {
+      g_node->restore_original_volume();
+    }
 
     const int exit_code = g_node ? g_node->exit_code() : 0;
     g_node.reset();
