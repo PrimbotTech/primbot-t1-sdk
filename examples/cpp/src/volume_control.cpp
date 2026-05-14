@@ -14,11 +14,11 @@
  *   - Volume and mute services must be available
  * 
  * @usage
- *   colcon build --packages-select volume_control
- *   ros2 run volume_control volume_control_client
+ *   colcon build --packages-select aimdk_examples_cpp
+ *   ros2 run aimdk_examples_cpp volume_control
  * 
  * @example
- *   ros2 run volume_control volume_control_client
+ *   ros2 run aimdk_examples_cpp volume_control
  * 
  * @parameters
  *   - None
@@ -31,18 +31,17 @@
 #include "aimdk_msgs/srv/play_tts.hpp"
 #include "aimdk_msgs/srv/set_mute.hpp"
 #include "aimdk_msgs/srv/set_volume.hpp"
-#include "rclcpp/executors/multi_threaded_executor.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
 #include <csignal>
 #include <cstdint>
-#include <functional>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
+#include <utility>
 
 using namespace std::chrono_literals;
 
@@ -59,7 +58,7 @@ constexpr char kTtsText[] =
 constexpr auto kStepInterval        = 5s;  // Delay between demo steps
 constexpr auto kServiceWaitInterval = 2s;  // Poll interval while waiting for a service
 constexpr auto kServiceCallTimeout  = 5s;  // Timeout for a single service request
-constexpr int kMaxRetryCount = 3;  // Maximum retry attempts
+constexpr int kMaxRetryCount = 3;          // Maximum retry attempts
 
 }  // namespace
 
@@ -68,28 +67,16 @@ class VolumeControlClient : public rclcpp::Node
  public:
   VolumeControlClient() : Node("volume_control_client")
   {
-    callback_group_ =
-      this->create_callback_group(rclcpp::CallbackGroupType::Reentrant);
+    play_tts_client_ = this->create_client<aimdk_msgs::srv::PlayTts>(play_tts_service_);
+    set_volume_client_ = this->create_client<aimdk_msgs::srv::SetVolume>(set_volume_service_);
+    get_volume_client_ = this->create_client<aimdk_msgs::srv::GetVolume>(get_volume_service_);
+    set_mute_client_ = this->create_client<aimdk_msgs::srv::SetMute>(set_mute_service_);
+    get_mute_client_ = this->create_client<aimdk_msgs::srv::GetMute>(get_mute_service_);
 
-    play_tts_client_ = this->create_client<aimdk_msgs::srv::PlayTts>(
-      play_tts_service_, rmw_qos_profile_services_default, callback_group_);
-    set_volume_client_ = this->create_client<aimdk_msgs::srv::SetVolume>(
-      set_volume_service_, rmw_qos_profile_services_default, callback_group_);
-    get_volume_client_ = this->create_client<aimdk_msgs::srv::GetVolume>(
-      get_volume_service_, rmw_qos_profile_services_default, callback_group_);
-    set_mute_client_ = this->create_client<aimdk_msgs::srv::SetMute>(
-      set_mute_service_, rmw_qos_profile_services_default, callback_group_);
-    get_mute_client_ = this->create_client<aimdk_msgs::srv::GetMute>(
-      get_mute_service_, rmw_qos_profile_services_default, callback_group_);
-
-    startup_timer_ = this->create_wall_timer(
-      200ms, std::bind(&VolumeControlClient::start_demo, this),
-      callback_group_);
-
-    RCLCPP_INFO(this->get_logger(), "Volume control demo node created. Waiting to start.");
+    RCLCPP_INFO(this->get_logger(), "Volume control demo node created.");
   }
 
-  bool initialize()
+  bool wait_for_services()
   {
     return wait_for_service(play_tts_client_, play_tts_service_) &&
            wait_for_service(set_volume_client_, set_volume_service_) &&
@@ -98,42 +85,13 @@ class VolumeControlClient : public rclcpp::Node
            wait_for_service(get_mute_client_, get_mute_service_);
   }
 
-  void request_stop(int exit_code)
-  {
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      if (shutdown_requested_) {
-        if (exit_code_ == 0 && exit_code != 0) {
-          exit_code_ = exit_code;
-        }
-      } else {
-        shutdown_requested_ = true;
-        if (exit_code_ == 0 || exit_code != 0) {
-          exit_code_ = exit_code;
-        }
-      }
-    }
-
-    if (startup_timer_) {
-      startup_timer_->cancel();
-    }
-    if (step_timer_) {
-      step_timer_->cancel();
-    }
-  }
-
-  int exit_code() const
-  {
-    std::lock_guard<std::mutex> lock(state_mutex_);
-    return exit_code_;
-  }
+  // ---- 信号处理 ----
 
   void handle_signal(int signal)
   {
     RCLCPP_INFO(this->get_logger(), "Received signal %d, will restore volume before shutdown.", signal);
-    // 只设标志，不在信号处理器中做服务调用
-    // 服务调用需要 executor spin 才能收到响应，信号处理器中 spin 已被中断
-    request_stop(signal);
+    std::lock_guard<std::mutex> lock(state_mutex_);
+    shutdown_requested_ = true;
   }
 
   bool is_shutdown_requested() const
@@ -142,7 +100,76 @@ class VolumeControlClient : public rclcpp::Node
     return shutdown_requested_;
   }
 
-  // 在 executor 仍有效的环境下恢复原始音量（Ctrl+C 后由 main 调用）
+  // ---- 业务逻辑（同步，在 main 中调用） ----
+
+  bool run_demo()
+  {
+    RCLCPP_INFO(this->get_logger(), "Volume control demo starts automatically.");
+    RCLCPP_INFO(this->get_logger(),
+                "Volume note: on this device a larger value means a smaller "
+                "actual volume.");
+
+    // Get initial volume to restore later (optional)
+    has_original_volume_ = false;
+    auto get_init_response = call_service<aimdk_msgs::srv::GetVolume>(
+      get_volume_client_, build_get_volume_request(), "GetVolume");
+    if (get_init_response) {
+      original_volume_ = get_init_response->audio_volume;
+      has_original_volume_ = true;
+      RCLCPP_INFO(this->get_logger(), "Initial volume: %u", original_volume_);
+    } else {
+      RCLCPP_WARN(this->get_logger(), "Failed to get initial volume, will skip restoration.");
+    }
+
+    if (!play_tts()) {
+      RCLCPP_ERROR(this->get_logger(), "PlayTts failed.");
+      return false;
+    }
+
+    // 定义演示步骤
+    struct Step {
+      const char *name;
+      std::function<bool()> func;
+    };
+    std::vector<Step> steps = {
+      {"设为默认音量", [this]() { return execute_volume_step(30, "设为默认音量"); }},
+      {"音量调大",     [this]() { return execute_volume_step(40, "音量调大"); }},
+      {"音量调小",     [this]() { return execute_volume_step(20, "音量调小"); }},
+      {"设置静音",     [this]() { return execute_mute_step(true, "设置静音"); }},
+      {"取消静音",     [this]() { return execute_mute_step(false, "取消静音"); }},
+    };
+
+    RCLCPP_INFO(this->get_logger(),
+                "TTS accepted. The first control step will run in %ld seconds.",
+                kStepInterval.count());
+
+    for (const auto &step : steps) {
+      if (is_shutdown_requested()) { break; }
+      std::this_thread::sleep_for(kStepInterval);
+      if (is_shutdown_requested()) { break; }
+      if (!step.func()) {
+        RCLCPP_ERROR(this->get_logger(),
+                     "Volume control step failed: %s (continuing to next step)", step.name);
+      }
+    }
+
+    // Restore original volume if available (normal finish or Ctrl+C)
+    if (has_original_volume_) {
+      RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
+      if (!execute_volume_step(original_volume_, "恢复原始音量")) {
+        RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
+      }
+      RCLCPP_INFO(this->get_logger(),
+                  "Volume control demo finished. Volume restored to %u, "
+                  "mute=false. (Check logs for any failed steps)", original_volume_);
+    } else {
+      RCLCPP_INFO(this->get_logger(),
+                  "Volume control demo finished. Volume restoration skipped "
+                  "(initial volume unknown). (Check logs for any failed steps)");
+    }
+    return true;
+  }
+
   bool restore_original_volume()
   {
     if (!has_original_volume_) {
@@ -151,11 +178,7 @@ class VolumeControlClient : public rclcpp::Node
 
     RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
 
-    auto set_request                  = std::make_shared<aimdk_msgs::srv::SetVolume::Request>();
-    set_request->request              = aimdk_msgs::msg::CommonRequest();
-    set_request->request.header.stamp = this->now();
-    set_request->audio_volume         = original_volume_;
-
+    auto set_request = build_set_volume_request(original_volume_);
     auto future = set_volume_client_->async_send_request(set_request);
     auto result = rclcpp::spin_until_future_complete(
       shared_from_this(), future, 5s);
@@ -191,22 +214,23 @@ class VolumeControlClient : public rclcpp::Node
     return true;
   }
 
+  // ---- 通用服务调用（使用 spin_until_future_complete，边 spin 边等） ----
+
   template <typename ServiceT>
   std::shared_ptr<typename ServiceT::Response> call_service(
     const typename rclcpp::Client<ServiceT>::SharedPtr &client,
     const std::shared_ptr<typename ServiceT::Request> &request,
     const char *service_name)
   {
-    // Retry mechanism: up to 3 attempts
     for (int i = 0; i < kMaxRetryCount; ++i) {
       auto future = client->async_send_request(request);
-      
-      if (future.wait_for(kServiceCallTimeout) == std::future_status::ready) {
+      auto result = rclcpp::spin_until_future_complete(
+        shared_from_this(), future, kServiceCallTimeout);
+
+      if (result == rclcpp::FutureReturnCode::SUCCESS) {
         try {
           auto response = future.get();
-          if (response) {
-            return response;
-          }
+          if (response) { return response; }
         } catch (const std::exception &e) {
           RCLCPP_ERROR(this->get_logger(), "%s failed: %s", service_name, e.what());
         }
@@ -219,230 +243,119 @@ class VolumeControlClient : public rclcpp::Node
     }
 
     RCLCPP_ERROR(this->get_logger(),
-                 "%s timed out after %d attempts (%ld ms each).",
+                 "%s timed out after %d attempts (%ld s each).",
                  service_name, kMaxRetryCount, kServiceCallTimeout.count());
     return nullptr;
   }
 
-  void start_demo()
+  // ---- 请求构建 ----
+
+  aimdk_msgs::msg::CommonRequest build_common_request()
   {
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      if (shutdown_requested_ || started_) {
-        return;
-      }
-      started_ = true;
-    }
-
-    startup_timer_->cancel();
-
-    RCLCPP_INFO(this->get_logger(), "Volume control demo starts automatically.");
-    RCLCPP_INFO(this->get_logger(),
-                "Volume note: on this device a larger value means a smaller "
-                "actual volume.");
-
-    // Get initial volume to restore later (optional)
-    auto get_init_request = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
-    get_init_request->request = aimdk_msgs::msg::CommonRequest();
-    get_init_request->request.header.stamp = this->now();
-
-    auto get_init_response = call_service<aimdk_msgs::srv::GetVolume>(
-      get_volume_client_, get_init_request, "GetVolume");
-    if (get_init_response) {
-      original_volume_ = get_init_response->audio_volume;
-      has_original_volume_ = true;
-      RCLCPP_INFO(this->get_logger(), "Initial volume: %u", original_volume_);
-    } else {
-      RCLCPP_WARN(this->get_logger(), "Failed to get initial volume, will skip restoration.");
-    }
-
-    if (!play_tts()) {
-      fail_and_shutdown("PlayTts failed.");
-      return;
-    }
-
-    step_timer_ = this->create_wall_timer(
-      kStepInterval, std::bind(&VolumeControlClient::run_step, this),
-      callback_group_);
-
-    RCLCPP_INFO(this->get_logger(), "TTS accepted. The first control step will run in %ld seconds.", kStepInterval.count());
+    aimdk_msgs::msg::CommonRequest req;
+    req.header.stamp = this->now();
+    return req;
   }
+
+  std::shared_ptr<aimdk_msgs::srv::SetVolume::Request>
+  build_set_volume_request(std::uint32_t volume)
+  {
+    auto req = std::make_shared<aimdk_msgs::srv::SetVolume::Request>();
+    req->request = build_common_request();
+    req->audio_volume = volume;
+    return req;
+  }
+
+  std::shared_ptr<aimdk_msgs::srv::GetVolume::Request>
+  build_get_volume_request()
+  {
+    auto req = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
+    req->request = build_common_request();
+    return req;
+  }
+
+  // ---- PlayTts ----
 
   bool play_tts()
   {
-    auto request                 = std::make_shared<aimdk_msgs::srv::PlayTts::Request>();
-    request->header              = aimdk_msgs::msg::CommonRequest();
-    request->header.header.stamp = this->now();
-    // domain and trace_id identify this TTS request.
-    request->tts_req.text           = kTtsText;
-    request->tts_req.domain         = tts_domain_;
-    request->tts_req.trace_id       = tts_trace_id_;
+    auto request = std::make_shared<aimdk_msgs::srv::PlayTts::Request>();
+    request->header = build_common_request();
+    request->tts_req.text = kTtsText;
+    request->tts_req.domain = tts_domain_;
+    request->tts_req.trace_id = tts_trace_id_;
     request->tts_req.is_interrupted = true;
     request->tts_req.priority_level.value =
       aimdk_msgs::msg::TtsPriorityLevel::INTERACTION_L6;
 
-    RCLCPP_INFO(this->get_logger(), "Sending PlayTts request. domain=%s trace_id=%s", request->tts_req.domain.c_str(), request->tts_req.trace_id.c_str());
+    RCLCPP_INFO(this->get_logger(),
+                "Sending PlayTts request. domain=%s trace_id=%s",
+                request->tts_req.domain.c_str(), request->tts_req.trace_id.c_str());
     RCLCPP_INFO(this->get_logger(), "TTS text: %s", request->tts_req.text.c_str());
 
-    auto response =
-      call_service<aimdk_msgs::srv::PlayTts>(play_tts_client_, request, "PlayTts");
-    if (!response) {
-      return false;
-    }
+    auto response = call_service<aimdk_msgs::srv::PlayTts>(
+      play_tts_client_, request, "PlayTts");
+    if (!response) { return false; }
 
     RCLCPP_INFO(this->get_logger(),
                 "PlayTts response: code=%ld status=%d is_success=%d "
                 "error_message=%s",
-                response->header.header.code, response->header.status.value, static_cast<int>(response->tts_resp.is_success), response->tts_resp.error_message.c_str());
+                response->header.header.code, response->header.status.value,
+                static_cast<int>(response->tts_resp.is_success),
+                response->tts_resp.error_message.c_str());
 
-    if (!response->tts_resp.is_success) {
-      return false;
-    }
-
-    return true;
+    return response->tts_resp.is_success;
   }
 
-  void run_step()
-  {
-    std::size_t current_step = 0;
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      if (shutdown_requested_) {
-        return;
-      }
-      if (step_in_progress_) {
-        RCLCPP_WARN(this->get_logger(), "Previous control step is still running, skip this tick.");
-        return;
-      }
-      if (step_index_ >= 5) {
-        return;
-      }
-      step_in_progress_ = true;
-      current_step      = step_index_;
-    }
-
-    bool ok = false;
-    const char* step_name = nullptr;
-    switch (current_step) {
-      case 0:
-        step_name = "设为默认音量";
-        ok = execute_volume_step(30, step_name);
-        break;
-      case 1:
-        step_name = "音量调大";
-        ok = execute_volume_step(40, step_name);
-        break;
-      case 2:
-        step_name = "音量调小";
-        ok = execute_volume_step(20, step_name);
-        break;
-      case 3:
-        step_name = "设置静音";
-        ok = execute_mute_step(true, step_name);
-        break;
-      case 4:
-        step_name = "取消静音";
-        ok = execute_mute_step(false, step_name);
-        break;
-      case 5:
-        // Restore original volume if available
-        step_name = "恢复原始音量";
-        if (has_original_volume_) {
-          RCLCPP_INFO(this->get_logger(), "Restoring original volume: %u", original_volume_);
-          ok = execute_volume_step(original_volume_, step_name);
-          if (!ok) {
-            RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
-          }
-          ok = true;  // Don't fail if restore fails
-        } else {
-          ok = true;  // Skip restoration
-        }
-        break;
-      default:
-        step_name = "未知步骤";
-        ok = false;
-        break;
-    }
-
-    bool is_done = false;
-    {
-      std::lock_guard<std::mutex> lock(state_mutex_);
-      step_in_progress_ = false;
-      if (shutdown_requested_) {
-        return;
-      }
-      // Always advance to next step, even if current step failed
-      ++step_index_;
-      is_done = step_index_ >= 6;  // 6 steps total (including restore)
-    }
-
-    // Log error if step failed, but continue to next step
-    if (!ok) {
-      RCLCPP_ERROR(this->get_logger(), "Volume control step failed: %s (continuing to next step)", step_name);
-    }
-
-    if (is_done) {
-      if (has_original_volume_) {
-        RCLCPP_INFO(this->get_logger(),
-                    "Volume control demo finished. Volume restored to %u, "
-                    "mute=false. (Check logs for any failed steps)", original_volume_);
-      } else {
-        RCLCPP_INFO(this->get_logger(),
-                    "Volume control demo finished. Volume restoration skipped "
-                    "(initial volume unknown). (Check logs for any failed steps)");
-      }
-      request_stop(0);
-      // 不在此处调 rclcpp::shutdown()，由 main() 统一处理
-    }
-  }
+  // ---- Volume Step ----
 
   bool execute_volume_step(std::uint32_t target_volume, const char *action_message)
   {
-    RCLCPP_INFO(this->get_logger(), "Running volume step. target=%u action=%s", target_volume, action_message);
-
-    // Call GetVolume after SetVolume to verify the result.
-    auto set_request                  = std::make_shared<aimdk_msgs::srv::SetVolume::Request>();
-    set_request->request              = aimdk_msgs::msg::CommonRequest();
-    set_request->request.header.stamp = this->now();
-    set_request->audio_volume         = target_volume;
+    RCLCPP_INFO(this->get_logger(),
+                "Running volume step. target=%u action=%s", target_volume, action_message);
 
     auto set_response = call_service<aimdk_msgs::srv::SetVolume>(
-      set_volume_client_, set_request, "SetVolume");
-    if (!set_response) {
-      return false;
-    }
+      set_volume_client_, build_set_volume_request(target_volume), "SetVolume");
+    if (!set_response) { return false; }
 
-    RCLCPP_INFO(this->get_logger(), "SetVolume response: code=%ld status=%d audio_volume=%u", set_response->response.header.code, set_response->response.status.value, set_response->audio_volume);
-
-    auto get_request                  = std::make_shared<aimdk_msgs::srv::GetVolume::Request>();
-    get_request->request              = aimdk_msgs::msg::CommonRequest();
-    get_request->request.header.stamp = this->now();
+    RCLCPP_INFO(this->get_logger(),
+                "SetVolume response: code=%ld status=%d audio_volume=%u",
+                set_response->response.header.code,
+                set_response->response.status.value,
+                set_response->audio_volume);
 
     auto get_response = call_service<aimdk_msgs::srv::GetVolume>(
-      get_volume_client_, get_request, "GetVolume");
-    if (!get_response) {
-      return false;
-    }
+      get_volume_client_, build_get_volume_request(), "GetVolume");
+    if (!get_response) { return false; }
 
-    RCLCPP_INFO(this->get_logger(), "GetVolume response: code=%ld status=%d audio_volume=%u", get_response->response.header.code, get_response->response.status.value, get_response->audio_volume);
+    RCLCPP_INFO(this->get_logger(),
+                "GetVolume response: code=%ld status=%d audio_volume=%u",
+                get_response->response.header.code,
+                get_response->response.status.value,
+                get_response->audio_volume);
 
     if (get_response->audio_volume != target_volume) {
-      RCLCPP_ERROR(this->get_logger(), "Volume verification failed. target=%u actual=%u", target_volume, get_response->audio_volume);
+      RCLCPP_ERROR(this->get_logger(),
+                   "Volume verification failed. target=%u actual=%u",
+                   target_volume, get_response->audio_volume);
       return false;
     }
 
-    RCLCPP_INFO(this->get_logger(), "%s，确认当前音量=%u", action_message, get_response->audio_volume);
+    RCLCPP_INFO(this->get_logger(),
+                "%s，确认当前音量=%u", action_message, get_response->audio_volume);
     return true;
   }
 
+  // ---- Mute Step ----
+
   bool execute_mute_step(bool target_mute, const char *action_message)
   {
-    RCLCPP_INFO(this->get_logger(), "Running mute step. target=%d action=%s", static_cast<int>(target_mute), action_message);
+    RCLCPP_INFO(this->get_logger(),
+                "Running mute step. target=%d action=%s",
+                static_cast<int>(target_mute), action_message);
 
     // Call GetMute after SetMute to verify the result.
     auto set_request                  = std::make_shared<aimdk_msgs::srv::SetMute::Request>();
-    set_request->request              = aimdk_msgs::msg::CommonRequest();
-    set_request->request.header.stamp = this->now();
+    set_request->request              = build_common_request();
     set_request->is_mute              = target_mute;
 
     auto set_response = call_service<aimdk_msgs::srv::SetMute>(
@@ -451,43 +364,42 @@ class VolumeControlClient : public rclcpp::Node
       return false;
     }
 
-    RCLCPP_INFO(
-      this->get_logger(),
-      "SetMute response: code=%ld status=%d is_mute=%d "
-      "(final result is verified by GetMute)",
-      set_response->response.header.code,
-      set_response->response.status.value,
-      static_cast<int>(set_response->is_mute));
+    RCLCPP_INFO(this->get_logger(),
+                "SetMute response: code=%ld status=%d is_mute=%d "
+                "(final result is verified by GetMute)",
+                set_response->response.header.code,
+                set_response->response.status.value,
+                static_cast<int>(set_response->is_mute));
 
     auto get_request                  = std::make_shared<aimdk_msgs::srv::GetMute::Request>();
-    get_request->request              = aimdk_msgs::msg::CommonRequest();
-    get_request->request.header.stamp = this->now();
+    get_request->request              = build_common_request();
 
     auto get_response = call_service<aimdk_msgs::srv::GetMute>(
       get_mute_client_, get_request, "GetMute");
-    if (!get_response) {
-      return false;
-    }
+    if (!get_response) { return false; }
 
-    RCLCPP_INFO(this->get_logger(), "GetMute response: code=%ld status=%d is_mute=%d", get_response->response.header.code, get_response->response.status.value, static_cast<int>(get_response->is_mute));
+    RCLCPP_INFO(this->get_logger(),
+                "GetMute response: code=%ld status=%d is_mute=%d",
+                get_response->response.header.code,
+                get_response->response.status.value,
+                static_cast<int>(get_response->is_mute));
 
     if (get_response->is_mute != target_mute) {
-      RCLCPP_ERROR(this->get_logger(), "Mute verification failed. target=%d actual=%d", static_cast<int>(target_mute), static_cast<int>(get_response->is_mute));
+      RCLCPP_ERROR(this->get_logger(),
+                   "Mute verification failed. target=%d actual=%d",
+                   static_cast<int>(target_mute),
+                   static_cast<int>(get_response->is_mute));
       return false;
     }
 
-    RCLCPP_INFO(this->get_logger(), "%s，确认当前静音状态=%d", action_message, static_cast<int>(get_response->is_mute));
+    RCLCPP_INFO(this->get_logger(),
+                "%s，确认当前静音状态=%d", action_message,
+                static_cast<int>(get_response->is_mute));
     return true;
   }
 
-  void fail_and_shutdown(const char *step_name)
-  {
-    RCLCPP_ERROR(this->get_logger(), "Volume control step failed: %s", step_name);
-    request_stop(1);
-    // 不在此处调 rclcpp::shutdown()，由 main() 统一处理
-  }
+  // ---- 成员变量 ----
 
-  rclcpp::CallbackGroup::SharedPtr callback_group_;
   const std::string play_tts_service_   = "/aimdk_5Fmsgs/srv/PlayTts";
   const std::string set_volume_service_ = "/aimdk_5Fmsgs/srv/SetVolume";
   const std::string get_volume_service_ = "/aimdk_5Fmsgs/srv/GetVolume";
@@ -495,71 +407,59 @@ class VolumeControlClient : public rclcpp::Node
   const std::string get_mute_service_   = "/aimdk_5Fmsgs/srv/GetMute";
   const std::string tts_domain_         = "volume_control_demo";
   const std::string tts_trace_id_       = "volume_control_demo_trace";
+
   rclcpp::Client<aimdk_msgs::srv::PlayTts>::SharedPtr play_tts_client_;
   rclcpp::Client<aimdk_msgs::srv::SetVolume>::SharedPtr set_volume_client_;
   rclcpp::Client<aimdk_msgs::srv::GetVolume>::SharedPtr get_volume_client_;
   rclcpp::Client<aimdk_msgs::srv::SetMute>::SharedPtr set_mute_client_;
   rclcpp::Client<aimdk_msgs::srv::GetMute>::SharedPtr get_mute_client_;
-  rclcpp::TimerBase::SharedPtr startup_timer_;
-  rclcpp::TimerBase::SharedPtr step_timer_;
 
   mutable std::mutex state_mutex_;
-  std::size_t step_index_  = 0;
-  bool started_            = false;
-  bool step_in_progress_   = false;
   bool shutdown_requested_ = false;
-  int exit_code_           = 0;
-  std::uint32_t original_volume_ = 30;  // Default fallback value
-  bool has_original_volume_ = false;    // Track if we successfully got initial volume
+  std::uint32_t original_volume_ = 30;
+  bool has_original_volume_ = false;
 };
 
 std::shared_ptr<VolumeControlClient> g_node = nullptr;
 
+// 修复 ROS2 中 Ctrl+C 后优先触发 shutdown 的问题
+// 自定义信号处理器只设标志，不做服务调用
 void signal_handler(int signal)
 {
   if (g_node) {
     g_node->handle_signal(signal);
   }
-  // 不在这里调 rclcpp::shutdown()，由 main() 处理清理和音量恢复
 }
 
 int main(int argc, char *argv[])
 {
+  rclcpp::init(argc, argv);
+  std::signal(SIGINT, signal_handler);
+  std::signal(SIGTERM, signal_handler);
+
+  g_node = std::make_shared<VolumeControlClient>();
+  int exit_code = 0;
+
   try {
-    rclcpp::init(argc, argv);
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
-
-    g_node = std::make_shared<VolumeControlClient>();
-    if (!g_node->initialize()) {
-      RCLCPP_ERROR(rclcpp::get_logger("volume_control_main"), "Failed to initialize volume control demo.");
-      g_node.reset();
-      rclcpp::shutdown();
-      return 1;
+    if (!g_node->wait_for_services()) {
+      RCLCPP_ERROR(rclcpp::get_logger("volume_control_main"),
+                   "Failed to initialize volume control demo.");
+      exit_code = 1;
+    } else {
+      g_node->run_demo();
     }
-
-    rclcpp::executors::MultiThreadedExecutor executor(
-      rclcpp::ExecutorOptions(), 2);
-    executor.add_node(g_node);
-
-    // 使用 spin_some 循环替代 executor.spin()
-    // 这样可以定期检查 shutdown 标志，在信号中断后恢复音量
-    while (rclcpp::ok() && !g_node->is_shutdown_requested()) {
-      executor.spin_some(std::chrono::milliseconds(100));
-    }
-
-    // Ctrl+C 中断时：executor 和上下文仍有效，在此恢复音量
-    // 正常完成时：step 5 已恢复，此处再次恢复无副作用
-    if (g_node->is_shutdown_requested()) {
-      g_node->restore_original_volume();
-    }
-
-    const int exit_code = g_node ? g_node->exit_code() : 0;
-    g_node.reset();
-    rclcpp::shutdown();
-    return exit_code;
   } catch (const std::exception &e) {
-    RCLCPP_ERROR(rclcpp::get_logger("volume_control_main"), "Program exited with exception: %s", e.what());
-    return 1;
+    RCLCPP_ERROR(rclcpp::get_logger("volume_control_main"),
+                 "Program exited with exception: %s", e.what());
+    exit_code = 1;
   }
+
+  // Ctrl+C 中断时：上下文仍有效，在此恢复音量
+  if (g_node && g_node->is_shutdown_requested()) {
+    g_node->restore_original_volume();
+  }
+
+  g_node.reset();
+  rclcpp::shutdown();
+  return exit_code;
 }
