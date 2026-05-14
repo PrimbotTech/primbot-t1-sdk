@@ -50,15 +50,15 @@ class PlayEmotionClient(Node):
             if not self.validate_parameters():
                 return False
 
-            # 一套代码兼容不同机型，T系列默认ID=10，Q系列默认ID=3001
+            # 一套代码兼容不同机型，T系列默认ID=10，Q系列默认ID=3003
             # 第一步：尝试原始请求（默认 ID 为 10）
             ok = self._call_service(self.type, list(self.emotion_ids), list(self.file_paths))
 
             # 第二步：降级逻辑
-            # 如果是播放表情模式，且尝试 ID 10 失败，则自动尝试播放保底 ID 3001
+            # 如果是播放表情模式，且尝试 ID 10 失败，则自动尝试播放保底 ID 3003
             if not ok and self.type == "emotion" and 10 in self.emotion_ids:
-                # 尝试播放保底表情 3001
-                ok = self._call_service("emotion", [3001], [])
+                # 尝试播放保底表情 3003
+                ok = self._call_service("emotion", [3003], [])
 
             if not ok:
                 self.get_logger().error("PlayEmotion request failed after all attempts.")
