@@ -85,6 +85,9 @@ int32 QUADRUPED_LOCOMOTION_PLEASURE = 114
 # 四足跳跃
 int32 QUADRUPED_LOCOMOTION_JUMP = 116
 
+# 四足伸展
+int32 QUADRUPED_LOCOMOTION_STRETCH = 117
+
 # ============================================================================
 # 两足相关动作 (200-299)
 # ============================================================================
@@ -107,6 +110,9 @@ int32 BIPED_LOCOMOTION_ROTATE_LOCAL = 204
 # 双足下腰模式
 int32 BIPED_LOCOMOTION_BACKBEND = 205
 
+# 双足太空步
+int32 BIPED_LOCOMOTION_MOONWALK = 206
+
 # 双足全身控制模式
 int32 BIPED_LOCOMOTION_WBC = 300
 
@@ -126,4 +132,20 @@ int32 MIMIC = 1003
 # 模仿动作-灵创
 int32 MIMIC_LINKCRAFT = 1004
 
+# 全身动作控制
 int32 BIPED_WHOLE_BODY_CTRL = 1005
+
+# 模仿动作-开源
+int32 MIMIC_OPENSOURCE = 1006
+
+# 站起
+int32 STAND_UP = 1007
+
+# 躺姿
+int32 LYING_DEFAULT = 1008
+
+# 躺下-俯卧
+int32 LIE_FACE_DOWN = 1009
+
+# 躺下-仰躺
+int32 LIE_FACE_UP = 1010
