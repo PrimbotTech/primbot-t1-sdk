@@ -4,24 +4,26 @@
 Example client for /aima/mc/locomotion/velocity.
 
 This script automatically handles the required state machine transitions for safety.
-Locomotion control (walking/running) requires the robot to be in BIPED_WALK_RUN mode.
+Locomotion control (walking/running) requires the robot to be in QUADRUPED_LOCOMOTION_DEFAULT mode.
 
 Prerequisites auto-handled by this script:
   The script ensures a safe sequential transition path:
-  PASSIVE_DEFAULT -> BIPED_STAND_DEFAULT -> BIPED_WALK_RUN
+  PASSIVE_DEFAULT -> QUADRUPED_STAND_DEFAULT -> QUADRUPED_LOCOMOTION_DEFAULT
   Depending on the initial state, it enters the sequence at the appropriate step.
 
 Flow:
-  1. Detect current state and transition to BIPED_WALK_RUN sequentially.
+  1. Detect current state and transition to QUADRUPED_LOCOMOTION_DEFAULT sequentially.
   2. Register this node as an authorized input source (priority 80).
   3. Prompt the user for target velocities.
   4. Publish velocity commands for 5 seconds.
   5. Stop the robot by sending zero velocity.
+  6. Release the registered input source.
 
 Usage:
   python3 examples/python/mc_locomotion_velocity.py
 """
 
+import signal
 import time
 
 import rclpy
@@ -185,7 +187,7 @@ class DirectVelocityControl(Node):
             if desc is None:
                 self.get_logger().error("Action status remained None after 5 seconds of polling.")
 
-        if desc == 'BIPED_WALK_RUN' and status == McActionStatus.RUNNING:
+        if desc == 'QUADRUPED_LOCOMOTION_DEFAULT' and status == McActionStatus.RUNNING:
             return True
 
         self.get_logger().info(f"Current state is {desc}. Starting state machine transition sequence...")
@@ -193,17 +195,17 @@ class DirectVelocityControl(Node):
         # Define the target sequence of states for walking
         sequence = [
             'PASSIVE_DEFAULT',
-            'BIPED_STAND_DEFAULT',
-            'BIPED_WALK_RUN'
+            'QUADRUPED_STAND_DEFAULT',
+            'QUADRUPED_LOCOMOTION_DEFAULT'
         ]
         
         # Determine starting point in the sequence
         start_index = 0
         if desc == 'PASSIVE_DEFAULT':
             start_index = 1
-        elif desc == 'BIPED_STAND_DEFAULT':
+        elif desc == 'QUADRUPED_STAND_DEFAULT':
             start_index = 2
-        elif desc in ['DAMPING_DEFAULT', 'STORE_DEFAULT']:
+        elif desc in ['DAMPING_DEFAULT']:
             start_index = 0
         else:
             start_index = 0
@@ -227,15 +229,31 @@ class DirectVelocityControl(Node):
         ):
             return False
 
+        # 先清理残留的同名输入源（上次运行可能未正常释放）
+        del_request = SetMcInputSource.Request()
+        del_request.action.value = 1003  # INPUTACTION_DELETE
+        del_request.input_source.name = "node"
+        del_request.request.header.stamp = self.get_clock().now().to_msg()
+        del_future = self.call_service_with_retry(
+            self.set_client, del_request, "SetMcInputSource(DELETE)"
+        )
+        if del_future is not None:
+            try:
+                del_resp = del_future.result()
+                if del_resp.response.header.code == 0:
+                    self.get_logger().info("Cleaned up leftover input source 'node'")
+            except Exception:
+                pass
+
         request = SetMcInputSource.Request()
-        request.action.value = 1001
+        request.action.value = 1001  # INPUTACTION_ADD
         request.input_source.name = "node"
         request.input_source.priority = 80
         request.input_source.timeout = 1000
         request.request.header.stamp = self.get_clock().now().to_msg()
 
         future = self.call_service_with_retry(
-            self.set_client, request, "SetMcInputSource"
+            self.set_client, request, "SetMcInputSource(ADD)"
         )
         if future is None:
             return False
@@ -243,7 +261,7 @@ class DirectVelocityControl(Node):
         try:
             response = future.result()
         except Exception as exc:
-            self.get_logger().error(f"SetMcInputSource failed: {exc}")
+            self.get_logger().error(f"SetMcInputSource(ADD) failed: {exc}")
             return False
 
         ret_code = response.response.header.code
@@ -258,7 +276,7 @@ class DirectVelocityControl(Node):
             return True
 
         self.get_logger().warning(
-            "SetMcInputSource returned "
+            "SetMcInputSource(ADD) returned "
             f"code={ret_code}, state={state}, task_id={task_id}"
         )
         return False
@@ -351,16 +369,49 @@ class DirectVelocityControl(Node):
         self.angular_velocity = angular
         return True
 
+    def release_input_source(self) -> bool:
+        request = SetMcInputSource.Request()
+        request.action.value = 1003
+        request.input_source.name = "node"
+        request.request.header.stamp = self.get_clock().now().to_msg()
+
+        future = self.call_service_with_retry(
+            self.set_client, request, "SetMcInputSource"
+        )
+        if future is None:
+            return False
+
+        try:
+            response = future.result()
+        except Exception as exc:
+            self.get_logger().error(f"SetMcInputSource failed: {exc}")
+            return False
+
+        ret_code = response.response.header.code
+
+        if ret_code == 0:
+            self.get_logger().info("Input source released successfully.")
+            return True
+
+        self.get_logger().warning(f"SetMcInputSource returned code={ret_code}")
+        return False
 
 def main(args=None):
     rclpy.init(args=args)
+    # init 之后立即覆盖 ROS2 的 SIGINT 处理器
+    # 阻止 Ctrl+C 触发 rclpy.shutdown()，保持上下文有效以释放输入源
+    def _sigint_handler(sig, frame):
+        raise KeyboardInterrupt
+    signal.signal(signal.SIGINT, _sigint_handler)
+
     node = DirectVelocityControl()
+    input_source_registered = False
 
     try:
         if not node.wait_for_services():
             return 1
 
-        # Step 1: Ensure the robot is in BIPED_WALK_RUN state
+        # Step 1: Ensure the robot is in QUADRUPED_LOCOMOTION_DEFAULT state
         if not node.ensure_ready_state():
             node.get_logger().error("Failed to prepare robot state for walking.")
             return 1
@@ -369,6 +420,7 @@ def main(args=None):
         if not node.register_input_source():
             node.get_logger().error("Input source registration failed, exiting")
             return 1
+        input_source_registered = True
 
         # Input speed must be 0, or have an absolute value at least the minimum threshold.
         try:
@@ -411,8 +463,13 @@ def main(args=None):
         # Ensure zero velocity is published
         node.publish_velocity()
         node.get_logger().info("5 seconds elapsed; robot stopped")
+        node.release_input_source()
+        input_source_registered = False
         return 0
     finally:
+        if input_source_registered:
+            node.get_logger().info("Releasing input source on exit...")
+            node.release_input_source()
         if node.timer is not None:
             node.timer.cancel()
         node.destroy_node()

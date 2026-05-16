@@ -2,19 +2,24 @@
  * @brief Example client for /aima/mc/locomotion/velocity.
  *
  * This script automatically handles the required state machine transitions for safety.
- * Locomotion control (walking/running) requires the robot to be in BIPED_WALK_RUN mode.
+ * Locomotion control (walking/running) requires the robot to be in
+ * QUADRUPED_LOCOMOTION_DEFAULT mode.
  *
  * Prerequisites auto-handled by this script:
  *   The script ensures a safe sequential transition path:
- *   PASSIVE_DEFAULT -> BIPED_STAND_DEFAULT -> BIPED_WALK_RUN
+ *   PASSIVE_DEFAULT -> QUADRUPED_STAND_DEFAULT -> QUADRUPED_LOCOMOTION_DEFAULT
  *   Depending on the initial state, it enters the sequence at the appropriate step.
  *
  * Flow:
- *   1. Detect current state and transition to BIPED_WALK_RUN sequentially.
+ *   1. Detect current state and transition to QUADRUPED_LOCOMOTION_DEFAULT sequentially.
  *   2. Register this node as an authorized input source (priority 80).
  *   3. Prompt the user for target velocities.
  *   4. Publish velocity commands for 5 seconds.
  *   5. Stop the robot by sending zero velocity.
+ *   6. Release the registered input source.
+ *
+ * Usage:
+ *   ros2 run aimdk_examples_cpp mc_locomotion_velocity
  */
 #include "aimdk_msgs/msg/mc_locomotion_velocity.hpp"
 #include "aimdk_msgs/msg/common_request.hpp"
@@ -119,23 +124,44 @@ public:
       return false;
     }
 
+    // 先清理残留的同名输入源（上次运行可能未正常释放）
+    auto del_request =
+        std::make_shared<aimdk_msgs::srv::SetMcInputSource::Request>();
+    del_request->action.value = 1003;  // INPUTACTION_DELETE
+    del_request->input_source.name = "node";
+    del_request->request.header.stamp = this->now();
+    auto del_future = call_service_with_retry<aimdk_msgs::srv::SetMcInputSource>(
+        set_client_, del_request, "SetMcInputSource(DELETE)");
+    if (del_future.valid()) {
+      auto del_resp = del_future.get();
+      if (del_resp->response.header.code == 0) {
+        RCLCPP_INFO(this->get_logger(), "Cleaned up leftover input source 'node'");
+      }
+    }
+
     auto request =
         std::make_shared<aimdk_msgs::srv::SetMcInputSource::Request>();
-    request->action.value = 1001;
+    request->action.value = 1001;  // INPUTACTION_ADD
     request->input_source.name = "node";
     request->input_source.priority = 80;
     request->input_source.timeout = 1000;
 
     request->request.header.stamp = this->now();
     auto future = call_service_with_retry<aimdk_msgs::srv::SetMcInputSource>(
-        set_client_, request, "SetMcInputSource");
+        set_client_, request, "SetMcInputSource(ADD)");
     
     if (!future.valid()) {
-      RCLCPP_ERROR(this->get_logger(), "SetMcInputSource failed after retries");
+      RCLCPP_ERROR(this->get_logger(), "SetMcInputSource(ADD) failed after retries");
       return false;
     }
 
     auto response = future.get();
+    int ret_code = response->response.header.code;
+    if (ret_code != 0) {
+      RCLCPP_WARN(this->get_logger(),
+                  "SetMcInputSource(ADD) returned code=%d", ret_code);
+      return false;
+    }
     int state = response->response.state.value;
     RCLCPP_INFO(this->get_logger(),
                 "Set input source succeeded: state=%d, task_id=%lu", state,
@@ -324,7 +350,7 @@ public:
       }
     }
 
-    if (has_info && info.action_desc == "BIPED_WALK_RUN" &&
+    if (has_info && info.action_desc == "QUADRUPED_LOCOMOTION_DEFAULT" &&
         info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
       return true;
     }
@@ -335,16 +361,16 @@ public:
 
     std::vector<std::string> sequence = {
       "PASSIVE_DEFAULT",
-      "BIPED_STAND_DEFAULT",
-      "BIPED_WALK_RUN"
+      "QUADRUPED_STAND_DEFAULT",
+      "QUADRUPED_LOCOMOTION_DEFAULT"
     };
 
     size_t start_index = 0;
     if (info.action_desc == "PASSIVE_DEFAULT") {
         start_index = 1;
-    } else if (info.action_desc == "BIPED_STAND_DEFAULT") {
+    } else if (info.action_desc == "QUADRUPED_STAND_DEFAULT") {
         start_index = 2;
-    } else if (info.action_desc == "DAMPING_DEFAULT" || info.action_desc == "STORE_DEFAULT") {
+    } else if (info.action_desc == "DAMPING_DEFAULT" ) {
         start_index = 0;
     } else {
         start_index = 0;
@@ -357,6 +383,33 @@ public:
     }
 
     return true;
+  }
+
+  bool release_input_source() {
+    auto request =
+        std::make_shared<aimdk_msgs::srv::SetMcInputSource::Request>();
+    request->action.value = 1003;  // INPUTACTION_DELETE
+    request->input_source.name = "node";
+    request->request.header.stamp = this->now();
+
+    auto future = call_service_with_retry<aimdk_msgs::srv::SetMcInputSource>(
+        set_client_, request, "SetMcInputSource");
+
+    if (!future.valid()) {
+      RCLCPP_ERROR(this->get_logger(), "ReleaseInputSource failed after retries");
+      return false;
+    }
+
+    auto response = future.get();
+    int ret_code = response->response.header.code;
+    if (ret_code == 0) {
+      RCLCPP_INFO(this->get_logger(), "Input source released successfully.");
+      return true;
+    }
+
+    RCLCPP_WARN(this->get_logger(),
+                "SetMcInputSource returned code=%d", ret_code);
+    return false;
   }
 
   void wait_for_services() {
@@ -490,6 +543,9 @@ int main(int argc, char *argv[]) {
   node->clear_velocity();
   node->publish_velocity();
   RCLCPP_INFO(node->get_logger(), "5 seconds elapsed; robot stopped");
+
+  // Step 6: Release input source
+  node->release_input_source();
 
   g_node.reset();
   rclcpp::shutdown();
