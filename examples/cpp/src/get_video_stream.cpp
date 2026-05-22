@@ -72,7 +72,7 @@ void print_usage(const char *program) {
       << "Read decoded frames from the RTSP stream and save MP4.\n\n"
       << "Options:\n"
       << "  -h, --help                  Show this help message and exit.\n"
-      << "  --camera_id CAMERA_ID       Camera identifier (e.g., head_monocular_centra).\n"
+      << "  --camera_id CAMERA_ID       Camera identifier (e.g., head_stereo_left).\n"
       << "  --camera CAMERA_ID          Alias of --camera_id.\n"
       << "  --robot_ip ROBOT_IP         Robot IP address (e.g., 10.1.1.100).\n"
       << "  --ip ROBOT_IP               Alias of --robot_ip.\n"
@@ -123,14 +123,17 @@ std::string prompt_input(const std::string &message, const std::string &default_
 
 void print_camera_list() {
   std::cout << std::string(60, '=') << std::endl;
-  std::cout << "The list of Q series Camera IDs is as follows:" << std::endl;
+  std::cout << "The list of T1 Camera IDs is as follows:" << std::endl;
   std::cout << std::string(60, '=') << std::endl;
-  std::cout << "  head_monocular_centra  - Head monocular central camera" << std::endl;
-  std::cout << "  head_stereo_left       - Head stereo left camera" << std::endl;
-  std::cout << "  head_stereo_right      - Head stereo right camera" << std::endl;
-  std::cout << "  head_fisheye_1         - Head fisheye camera 1" << std::endl;
-  std::cout << "  head_fisheye_2         - Head fisheye camera 2" << std::endl;
-  std::cout << "  head_TOF3D             - Head TOF 3D camera" << std::endl;
+  std::cout << "  head_stereo_left       - 头部双目左机" << std::endl;
+  std::cout << "  head_stereo_right      - 头部双目右机" << std::endl;
+  std::cout << "  head_TOF3D             - 头部TOF" << std::endl;
+  std::cout << "  hip_TOF3D_front        - 胯部前TOF" << std::endl;
+  std::cout << "  hip_TOF3D_back         - 胯部后TOF" << std::endl;
+  std::cout << "  TOF3D_left             - 左侧TOF" << std::endl;
+  std::cout << "  TOF3D_right            - 右侧TOF" << std::endl;
+  std::cout << "  fisheye_left           - 左侧鱼眼" << std::endl;
+  std::cout << "  fisheye_right          - 右侧鱼眼" << std::endl;
   std::cout << std::string(60, '=') << std::endl;
   std::cout << "For camera_id corresponding to different robot configurations, please refer to the interface documentation." << std::endl;
   std::cout << std::endl;
