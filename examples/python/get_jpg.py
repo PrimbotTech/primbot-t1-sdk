@@ -9,9 +9,15 @@ Supported parameters:
   - service_name: CaptureJpegImage service name
   - camera_id: Camera identifier
         Available camera_id options:
-        - head_monocular_centra
         - head_stereo_left
         - head_stereo_right
+        - head_TOF3D
+        - hip_TOF3D_front
+        - hip_TOF3D_back
+        - TOF3D_left
+        - TOF3D_right
+        - fisheye_left
+        - fisheye_right
         For details, please refer to the interface documentation.
   - timeout_ms: Wait time for a fresh JPEG frame, in milliseconds. Use 0 to
     follow the server default.
@@ -59,14 +65,17 @@ def prepare_output_path(output_file: str) -> Path:
 def get_camera_id_from_user() -> str:
     """Interactively get camera_id from user input."""
     print("\n" + "="*60)
-    print("The list of Q series Camera IDs is as follows:")
+    print("The list of T1 Camera IDs is as follows:")
     print("="*60)
-    print("  head_monocular_centra  - 头部单目中央相机")
-    print("  head_stereo_left       - 头部双目左相机")
-    print("  head_stereo_right      - 头部双目右相机")
-    print("  head_fisheye_1         - 头部鱼眼相机 1")
-    print("  head_fisheye_2         - 头部鱼眼相机 2")
-    print("  head_TOF3D             - 头部 TOF 3D 相机")
+    print("  head_stereo_left       - 头部双目左机")
+    print("  head_stereo_right      - 头部双目右机")
+    print("  head_TOF3D             - 头部TOF")
+    print("  hip_TOF3D_front        - 胯部前TOF")
+    print("  hip_TOF3D_back         - 胯部后TOF")
+    print("  TOF3D_left             - 左侧TOF")
+    print("  TOF3D_right            - 右侧TOF")
+    print("  fisheye_left           - 左侧鱼眼")
+    print("  fisheye_right          - 右侧鱼眼")
     print("="*60)
     print("For camera_id corresponding to different robot configurations, please refer to the interface documentation.")
     print("")
