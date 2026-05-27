@@ -1,16 +1,26 @@
 #!/usr/bin/env python3
 
-"""
+"""Audio Stream Capture Example Script
+
+Description:
+  This script demonstrates how to capture audio streams from the robot using the AudioCapture
+  topic and playback using the AudioPlayback service. Supports automated recording with
+  configurable duration and optional conversion/playback.
+
+Prerequisites:
+  - Audio capture topic must be publishing
+  - Audio playback service must be available
+
 Usage:
   python3 get_audio_stream.py --ros-args -p output_file:=<path> -p capture_seconds:=<seconds>
 
-Notes:
-  - After the recording duration expires, you MUST type 'y' in the terminal to trigger conversion and playback.
-
 Parameters:
-  - output_file: Path to save the original 16kHz PCM file (Default: /tmp/audio_capture.pcm).
+  - output_file: Path to save the original 24kHz PCM file (Default: /tmp/audio_capture.pcm).
   - capture_seconds: Duration of automated recording in seconds (Default: 5s).
   - log_every_n_messages: Print progress log every N received packets.
+
+Notes:
+  - After the recording duration expires, you MUST type 'y' in the terminal to trigger conversion and playback.
 
 Example:
   python3 get_audio_stream.py --ros-args -p capture_seconds:=10
@@ -79,32 +89,11 @@ class AudioStreamSubscriber(Node):
             if self.output_stream: self.output_stream.close()
 
     def process_and_play(self) -> None:
-        """根据硬件规约重采样：16k -> 24k (2点变3点)"""
-        processed_file = self.output_file.replace(".pcm", "_playback.pcm")
-        self.get_logger().info(f"Optimizing audio: 16k -> 24k linear resampling...")
-        
-        try:
-            # 获取采集时的声道数带来的步长
-            stride = self.audio_info.channels * 2
-            
-            with open(self.output_file, "rb") as f_in, open(processed_file, "wb") as f_out:
-                while True:
-                    # 读取两帧数据
-                    chunk = f_in.read(stride * 2)
-                    if len(chunk) < stride * 2: break
-                    
-                    # 提取时刻1和时刻2的 Ch1
-                    s1 = struct.unpack('<h', chunk[0:2])[0]
-                    s2 = struct.unpack('<h', chunk[stride : stride+2])[0]
-                    
-                    # 线性插补点
-                    s_mid = (s1 + s2) // 2
-                    
-                    # 写入 3 个点 (符合 24000Hz 规约)
-                    f_out.write(struct.pack('<hhh', s1, s_mid, s2))
+        """直接以24kHz播放采集到的音频"""
+        self.get_logger().info("Direct playback at 24kHz (no resampling needed)...")
 
-            self.get_logger().info("Conversion successful. Starting 24kHz stream playback...")
-            self.stream_play(processed_file)
+        try:
+            self.stream_play(self.output_file)
         except Exception as e:
             self.get_logger().error(f"Processing failed: {e}")
 

@@ -6,7 +6,7 @@
  *   - After the recording duration expires, you MUST type 'y' in the terminal to trigger conversion and playback.
  *
  * Parameters:
- *   - output_file: Path to save the original 16kHz PCM file (Default: /tmp/audio_capture.pcm).
+ *   - output_file: Path to save the original 24kHz PCM file (Default: /tmp/audio_capture.pcm).
  *   - capture_seconds: Duration of automated recording in seconds (Default: 5s).
  *
  * Example:
@@ -94,8 +94,9 @@ private:
         playback_file += "_playback_24k.pcm";
     }
 
-    RCLCPP_INFO(this->get_logger(), "Optimizing: 16k -> 24k (Linear Interpolation)...");
+    RCLCPP_INFO(this->get_logger(), "Direct playback at 24kHz (no resampling needed)...");
 
+    // Direct playback - source is already 24kHz
     std::ifstream fin(output_file_, std::ios::binary);
     std::ofstream fout(playback_file, std::ios::binary);
     
@@ -104,21 +105,7 @@ private:
         return;
     }
 
-    int stride = last_info_.channels * 2;
-    std::vector<char> buffer(stride * 2);
-
-    while (fin.read(buffer.data(), buffer.size())) {
-        // Extract Ch1 from two frames for interpolation
-        int16_t s1 = *reinterpret_cast<int16_t*>(&buffer[0]);
-        int16_t s2 = *reinterpret_cast<int16_t*>(&buffer[stride]);
-
-        int16_t s_mid = (s1 + s2) / 2;
-
-        // Write 3 samples (16k * 1.5 = 24k)
-        fout.write(reinterpret_cast<const char*>(&s1), 2);
-        fout.write(reinterpret_cast<const char*>(&s_mid), 2);
-        fout.write(reinterpret_cast<const char*>(&s2), 2);
-    }
+    fout << fin.rdbuf();
     fin.close();
     fout.close();
 
