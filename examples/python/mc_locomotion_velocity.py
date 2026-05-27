@@ -141,6 +141,7 @@ class DirectVelocityControl(Node):
             request = SetMcAction.Request()
             request.header = RequestHeader()
             request.header.stamp = self.get_clock().now().to_msg()
+            request.source = "node"  # 触发源标识
             request.command = McActionCommand()
             request.command.action = McAction()
             request.command.action_desc = action_desc
@@ -163,8 +164,10 @@ class DirectVelocityControl(Node):
         deadline = time.monotonic() + timeout_sec
         while time.monotonic() < deadline:
             _, desc, status = self.get_action_status()
-            if desc == target_desc and status == McActionStatus.RUNNING:
-                self.get_logger().info(f"Robot successfully reached state: {target_desc}")
+            # Locomotion modes (walk/run) report status=2 (TRANSITION) instead of
+            # RUNNING (100), so accept any non-IDLE status when action_desc matches.
+            if desc == target_desc and status != McActionStatus.IDLE:
+                self.get_logger().info(f"Robot successfully reached state: {target_desc} (status={status})")
                 return True
             time.sleep(0.5)
         self.get_logger().error(f"Timeout waiting for state: {target_desc}")
@@ -187,7 +190,7 @@ class DirectVelocityControl(Node):
             if desc is None:
                 self.get_logger().error("Action status remained None after 5 seconds of polling.")
 
-        if desc == 'QUADRUPED_LOCOMOTION_DEFAULT' and status == McActionStatus.RUNNING:
+        if desc == 'QUADRUPED_LOCOMOTION_DEFAULT' and status != McActionStatus.IDLE:
             return True
 
         self.get_logger().info(f"Current state is {desc}. Starting state machine transition sequence...")

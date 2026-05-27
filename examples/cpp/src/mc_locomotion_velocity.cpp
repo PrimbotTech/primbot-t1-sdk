@@ -292,6 +292,7 @@ public:
   bool set_action(const std::string &desc) {
     auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
     request->header.stamp = this->now();
+    request->source = "node";  // 触发源标识
     request->command.action_desc = desc;
     RCLCPP_INFO(this->get_logger(), "Requesting state switch to: %s",
                 desc.c_str());
@@ -313,10 +314,12 @@ public:
     auto deadline = std::chrono::steady_clock::now() + timeout;
     while (std::chrono::steady_clock::now() < deadline) {
       ActionInfo info;
+      // Locomotion modes (walk/run) report status=2 (TRANSITION) instead of
+      // RUNNING (100), so accept any non-IDLE status when action_desc matches.
       if (get_action_status(info) && info.action_desc == target &&
-          info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
-        RCLCPP_INFO(this->get_logger(), "Robot reached state: %s",
-                    target.c_str());
+          info.status != aimdk_msgs::msg::McActionStatus::IDLE) {
+        RCLCPP_INFO(this->get_logger(), "Robot reached state: %s (status=%d)",
+                    target.c_str(), info.status);
         return true;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -351,7 +354,7 @@ public:
     }
 
     if (has_info && info.action_desc == "QUADRUPED_LOCOMOTION_DEFAULT" &&
-        info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+        info.status != aimdk_msgs::msg::McActionStatus::IDLE) {
       return true;
     }
 

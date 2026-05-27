@@ -1,6 +1,9 @@
 # 请求头
 RequestHeader header
 
+# 触发源
+string source
+
 # Action命令
 McActionCommand command
 
