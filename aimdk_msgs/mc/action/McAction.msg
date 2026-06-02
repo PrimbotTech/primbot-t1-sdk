@@ -88,6 +88,12 @@ int32 QUADRUPED_LOCOMOTION_JUMP = 116
 # 四足伸展
 int32 QUADRUPED_LOCOMOTION_STRETCH = 117
 
+# 四足俯卧撑
+int32 QUADRUPED_PUSH_UP = 118
+
+# 四足模仿动作
+int32 QUADRUPED_MIMIC = 119
+
 # ============================================================================
 # 两足相关动作 (200-299)
 # ============================================================================
@@ -113,8 +119,17 @@ int32 BIPED_LOCOMOTION_BACKBEND = 205
 # 双足太空步
 int32 BIPED_LOCOMOTION_MOONWALK = 206
 
+# 双足奔跑模式
+int32 BIPED_LOCOMOTION_RUN = 207
+
 # 双足全身控制模式
 int32 BIPED_LOCOMOTION_WBC = 300
+
+# 双足动画控制模式
+int32 BIPED_LOCOMOTION_ANIMATION = 301
+
+# 双足转圈
+int32 BIPED_MIMIC_ROTATE_DANCE = 400 
 
 # ============================================================================
 # Q 系列Action
@@ -149,3 +164,12 @@ int32 LIE_FACE_DOWN = 1009
 
 # 躺下-仰躺
 int32 LIE_FACE_UP = 1010
+
+# 轻柔步态(室内)
+int32 BIPED_QUIET_WALK = 1011
+
+# 越障模式(室外)
+int32 BIPED_BLIND_TERRAIN = 1012
+
+# 坐下
+int32 BIPED_SIT_DOWN = 1013
