@@ -282,10 +282,10 @@ private:
     RCLCPP_INFO(
         this->get_logger(),
         "JPEG saved: file=%s bytes=%zu format=%s camera_id=%s device=%s "
-        "width=%u height=%u framerate=%u frame_id=%s",
+        "width=%u height=%u framerate=%u exposure=%u gain=%u frame_id=%s",
         output_path_.string().c_str(), image.data.size(), image.format.c_str(),
         jpeg.camera_id.c_str(), jpeg.device.c_str(), jpeg.width, jpeg.height,
-        jpeg.framerate, image.header.frame_id.c_str());
+        jpeg.framerate, jpeg.exposure, jpeg.gain, image.header.frame_id.c_str());
     return true;
   }
 
