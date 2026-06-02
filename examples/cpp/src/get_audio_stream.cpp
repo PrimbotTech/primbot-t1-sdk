@@ -18,6 +18,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -86,31 +87,50 @@ private:
   }
 
   void process_and_play() {
-    std::string playback_file = output_file_;
-    size_t last_dot = playback_file.find_last_of(".");
-    if (last_dot != std::string::npos) {
-        playback_file.insert(last_dot, "_playback_24k");
-    } else {
-        playback_file += "_playback_24k.pcm";
+    if (last_info_.sample_rate == 0) {
+      RCLCPP_ERROR(this->get_logger(), "No audio info available, cannot playback");
+      return;
     }
 
-    RCLCPP_INFO(this->get_logger(), "Direct playback at 24kHz (no resampling needed)...");
+    if (last_info_.sample_rate == 24000) {
+      RCLCPP_INFO(this->get_logger(), "Direct playback at 24kHz");
+      stream_to_robot(output_file_);
+    } 
+    else if (last_info_.sample_rate == 16000) {
+      RCLCPP_INFO(this->get_logger(), "Resampling: 16k -> 24k...");
+      
+      std::string processed_file = output_file_;
+      size_t pos = processed_file.find_last_of(".");
+      processed_file.insert(pos != std::string::npos ? pos : processed_file.length(), "_playback");
 
-    // Direct playback - source is already 24kHz
-    std::ifstream fin(output_file_, std::ios::binary);
-    std::ofstream fout(playback_file, std::ios::binary);
-    
-    if (!fin || !fout) {
-        RCLCPP_ERROR(this->get_logger(), "Failed to open files for conversion.");
+      std::ifstream fin(output_file_, std::ios::binary);
+      std::ofstream fout(processed_file, std::ios::binary);
+      
+      if (!fin || !fout) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to open files");
         return;
+      }
+
+      int stride = last_info_.channels * 2;
+      std::vector<char> chunk(stride * 2);
+      
+      while (fin.read(chunk.data(), chunk.size())) {
+        int16_t s1, s2;
+        std::memcpy(&s1, chunk.data(), 2);
+        std::memcpy(&s2, chunk.data() + stride, 2);
+        int16_t s_mid = static_cast<int16_t>((static_cast<int>(s1) + s2) / 2);
+        
+        fout.write(reinterpret_cast<char*>(&s1), 2);
+        fout.write(reinterpret_cast<char*>(&s_mid), 2);
+        fout.write(reinterpret_cast<char*>(&s2), 2);
+      }
+
+      RCLCPP_INFO(this->get_logger(), "Starting 24kHz playback...");
+      stream_to_robot(processed_file);
+    } 
+    else {
+      RCLCPP_WARN(this->get_logger(), "Unsupported sample rate: %dHz", last_info_.sample_rate);
     }
-
-    fout << fin.rdbuf();
-    fin.close();
-    fout.close();
-
-    RCLCPP_INFO(this->get_logger(), "Conversion done. Starting stream playback...");
-    stream_to_robot(playback_file);
   }
 
   void stream_to_robot(const std::string& path) {

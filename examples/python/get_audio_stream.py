@@ -89,13 +89,52 @@ class AudioStreamSubscriber(Node):
             if self.output_stream: self.output_stream.close()
 
     def process_and_play(self) -> None:
-        """直接以24kHz播放采集到的音频"""
-        self.get_logger().info("Direct playback at 24kHz (no resampling needed)...")
+        """根据采样率处理并播放音频"""
+        if self.audio_info is None:
+            self.get_logger().error("No audio info available, cannot playback")
+            return
 
-        try:
-            self.stream_play(self.output_file)
-        except Exception as e:
-            self.get_logger().error(f"Processing failed: {e}")
+        if self.audio_info.sample_rate == 24000:
+            self.get_logger().info("Direct playback at 24kHz (no resampling needed)...")
+            try:
+                self.stream_play(self.output_file)
+            except Exception as e:
+                self.get_logger().error(f"Playback failed: {e}")
+        
+        if self.audio_info.sample_rate == 16000:
+            """根据硬件规约重采样：16k -> 24k (2点变3点)"""
+            processed_file = self.output_file.replace(".pcm", "_playback.pcm")
+            self.get_logger().info(f"Resampling audio: 16k -> 24k linear interpolation...")
+            try:
+                # 获取采集时的声道数带来的步长
+                stride = self.audio_info.channels * 2
+            
+                with open(self.output_file, "rb") as f_in, open(processed_file, "wb") as f_out:
+                    while True:
+                        # 读取两帧数据
+                        chunk = f_in.read(stride * 2)
+                        if len(chunk) < stride * 2: break
+                    
+                        # 提取时刻1和时刻2的 Ch1
+                        s1 = struct.unpack('<h', chunk[0:2])[0]
+                        s2 = struct.unpack('<h', chunk[stride : stride+2])[0]
+                    
+                        # 线性插补点
+                        s_mid = (s1 + s2) // 2
+                    
+                        # 写入 3 个点 (符合 24000Hz 规约)
+                        f_out.write(struct.pack('<hhh', s1, s_mid, s2))
+
+                self.get_logger().info("Conversion successful. Starting 24kHz stream playback...")
+                self.stream_play(processed_file)
+            except Exception as e:
+                self.get_logger().error(f"Resampling failed: {e}")
+        
+        else:
+            self.get_logger().warning(
+                f"Unsupported sample rate: {self.audio_info.sample_rate}Hz. "
+                f"Expected 16000 or 24000 Hz. Skipping playback."
+            )
 
     def stream_play(self, filename: str) -> None:
         """流式发送 24k 采样率数据"""
