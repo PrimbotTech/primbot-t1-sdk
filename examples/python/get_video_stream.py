@@ -1,14 +1,24 @@
 #!/usr/bin/env python3
 
-"""RTSP Video Stream Reader Example
-  
+"""RTSP Video Stream Capture Example Script
+
+Description:
+  This script demonstrates how to read decoded frames from the RTSP stream and save
+  them as MP4 files. Supports interactive camera and IP selection, configurable capture
+  duration, and automatic file output.
+
+Prerequisites:
+  - RTSP stream server must be running on the robot
+  - OpenCV must be available for frame decoding
+
 RTSP URL Format:
   rtsp://{ip}:2554/live_{camera_id}
 
-Default MP4 Output Path:
-  /tmp/video_capture.mp4
+Usage:
+  python3 get_video_stream.py [--camera_id CAMERA_ID] [--robot_ip ROBOT_IP]
+    [--output_file OUTPUT_FILE] [--capture_seconds SEC]
 
-Supported Arguments:
+Parameters:
   --camera_id, --camera: Camera identifier (interactive prompt if not provided)
   --robot_ip, --ip: Robot IP address (interactive prompt if not provided)
   --output_file, --output: MP4 output file path (default: /tmp/video_capture.mp4)
@@ -19,9 +29,8 @@ Interactive Mode:
   If --camera or --ip is not provided, the script will prompt for input.
   Press Enter to use the default values shown in brackets.
 
-Examples:
-  # Interactive mode (will prompt for camera and IP)
-  python3 examples/python/get_video_stream.py
+Example:
+  python3 get_video_stream.py --camera_id head_stereo_left --robot_ip 10.1.1.100
 """
 
 from __future__ import annotations

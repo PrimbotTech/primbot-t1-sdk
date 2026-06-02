@@ -1,5 +1,23 @@
 #!/usr/bin/env python3
 
+"""BMS State Monitor Example Script
+
+Description:
+  This script subscribes to the BMS (Battery Management System) state topic and
+  continuously prints battery information including voltage, current, temperature,
+  and charge level.
+
+Prerequisites:
+  - BMS hardware must be connected and publishing state data
+  - /aima/hal/bms/state topic must be available
+
+Usage:
+  python3 get_bms_state.py
+
+Example:
+  python3 get_bms_state.py
+"""
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data

@@ -1,13 +1,25 @@
 #!/usr/bin/env python3
 
-"""
-ROS parameters:
-  file_name: audio file name.
-  file_path: directory containing the audio file.
+"""Audio Playback Example Script
+
+Description:
+  This script demonstrates how to play audio files on the robot using the PlayAudioFile
+  service. Supports specifying audio file name and directory path. Default sample rate is 24kHz.
+
+Prerequisites:
+  - PlayAudioFile service must be available
+  - Audio file must exist on the robot at the specified path
+  - Audio file must be 24kHz, 16-bit PCM, mono WAV format
+
+Usage:
+  python3 play_audio.py --ros-args -p file_name:=<name> -p file_path:=<path>
+
+Parameters:
+  - file_name: Audio file name (Default: 小星星.wav)
+  - file_path: Directory containing the audio file
 
 Example:
-  python3 examples/python/play_audio.py --ros-args \
-    -p file_name:=demo.wav -p file_path:=/tmp
+  python3 play_audio.py --ros-args -p file_name:=小星星.wav -p file_path:=/robot/software/aimrt_agent/bin/cfg/t1/audio
 """
 
 import rclpy
@@ -22,15 +34,15 @@ from aimdk_msgs.srv import PlayAudioFile
 class PlayAudioFileClient(Node):
     def __init__(self):
         super().__init__("play_audio_file_client")
-        self.file_name = self.declare_parameter("file_name", "撒娇.wav").value
-        self.file_path = self.declare_parameter("file_path", "/robot/software/aimrt_agent/bin/cfg/q1/audio").value
+        self.file_name = self.declare_parameter("file_name", "小星星.wav").value
+        self.file_path = self.declare_parameter("file_path", "/robot/software/aimrt_agent/bin/cfg/t1/audio").value
 
         self.service_name = "/aimdk_5Fmsgs/srv/PlayAudioFile"
         self.pkg_name = "sdk_demo"
         self.sample_format = "S16_LE"
         self.coding_format = "wave"
         self.channels = 1
-        self.sample_rate = 16000
+        self.sample_rate = 24000
         self.size = 0
         self.priority = 6
         self.priority_weight = 0

@@ -1,41 +1,59 @@
-# 注意：在使用本脚本前，需首先关闭机器人本体运控模块并将机器人平躺或悬挂，否则可能出现不可预期的异常行为！
+# WARNING: Before running this script, you MUST disable the robot's built-in motion
+# control module and place the robot flat on the ground or suspend it.
+# Otherwise, unpredictable behavior may occur.
 #!/usr/bin/env python3
 
-"""
-Example joint position controller for /aima/hal/joint/command.
+"""Joint Position Control Example Script
 
-Before running the following command, place the robot flat on the ground.
-The following example lifts the left arm and right leg.
+Description:
+  This script demonstrates how to control robot joint positions using the Ruckig trajectory
+  planner. Publishes trajectory commands to /aima/hal/joint/command at 500Hz (default) and
+  monitors joint state via /aima/hal/joint/state. Supports configurable joint names, target
+  positions, stiffness, and damping.
 
 Prerequisites:
-  1. Build the SDK: `colcon build` (this automatically deploys the required .so library).
-  2. Source environment: `source install/setup.bash`.
+  - Robot must be in low-level motion control developer mode (run `aima mode edit` ->
+    Advanced -> domains.mc.low_level_dev, then reboot)
+  - Robot must be placed flat on the ground or suspended
+  - Joint state topic /aima/hal/joint/state must be publishing
+  - Ruckig trajectory library must be available
 
-Example:
-  python3 examples/python/joint_control.py --ros-args \
-    -p joint_names:="[ \
-      'right_hip_pitch_joint', \
-      'right_hip_roll_joint', \
-      'right_hip_yaw_joint', \
-      'right_knee_joint', \
-      'right_ankle_pitch_joint', \
-      'right_ankle_roll_joint', \
-      'left_shoulder_pitch_joint', \
-      'left_elbow_joint', \
-      'left_shoulder_yaw_joint', \
-      'left_shoulder_roll_joint' \
-    ]" \
-    -p target_positions:="[ \
-      -1.6, 0.5, 0.0, 0.0, 0.0, 0.0, \
-      -1.8, 2.2, -0.2, 0.0 \
-    ]"
+Usage:
+  # List available joints (no parameters needed):
+  python3 joint_control.py
+
+  # Control specific joints:
+  python3 joint_control.py --ros-args -p joint_names:=<names> -p target_positions:=<positions>
+
+T1 Available Joints:
+  Left  Arm : FL_HIP_ROLL_Joint  [-0.47, 0.47], FL_HIP_PITCH_Joint [-1.22, 4.36], FL_KNEE_Joint [-2.62, 2.62]
+  Right Arm : FR_HIP_ROLL_Joint  [-0.47, 0.47], FR_HIP_PITCH_Joint [-1.22, 4.36], FR_KNEE_Joint [-2.62, 2.62]
+  Left  Leg : RL_HIP_ROLL_Joint  [-1.57, 1.57], RL_HIP_PITCH_Joint [0.00, 3.14], RL_KNEE_Joint [-2.62, -0.17], RL_FOOT_Joint [-10.0, 10.0]
+  Right Leg : RR_HIP_ROLL_Joint  [-1.57, 1.57], RR_HIP_PITCH_Joint [0.00, 3.14], RR_KNEE_Joint [-2.62, -0.17], RR_FOOT_Joint [-10.0, 10.0]
+  (Position unit: rad)
+
+Parameters:
+  - joint_names: String array of joint names to control (required for control; omit to list joints)
+  - target_positions: Double array of target positions (same length as joint_names)
+  - default_stiffness: Default stiffness value for all joints (default: 20.0)
+  - default_damping: Default damping value for all joints (default: 2.0)
+  - max_velocity: Ruckig max velocity limit in rad/s (default: 3.0)
+  - max_acceleration: Ruckig max acceleration limit in rad/s^2 (default: 10.0)
+  - max_jerk: Ruckig max jerk limit in rad/s^3 (default: 25.0)
+  - control_period_s: Control loop period in seconds (default: 0.002 = 500Hz, recommended 500-1000Hz)
+  - state_timeout_s: Timeout waiting for joint state in seconds (default: 10.0)
+  - publish_full_command: Publish all joints (true) or target joints only (false) (default: true)
 
 Notes:
   - joint_names and target_positions must have the same length.
-  - stiffness and damping are optional. If omitted, default_stiffness and
-    default_damping are used for every joint.
-  - The node waits for /aima/hal/joint/state, then uses Ruckig to publish
-    trajectory points to /aima/hal/joint/command until the target is reached.
+  - Running without joint_names will list available joints from /aima/hal/joint/state and exit.
+  - The control frequency must be 500Hz-1000Hz; below 100Hz triggers hardware watchdog.
+  - stiffness and damping are optional. If omitted, default values are used.
+  - publish_full_command=true is recommended to prevent unintended motion of non-target joints.
+  - On exit, the script sends stiffness=0, damping=5.0 (damping protection mode).
+
+Example:
+  python3 joint_control.py --ros-args -p joint_names:="['FL_HIP_PITCH_Joint']" -p target_positions:="[2.0]"
 """
 
 import signal
