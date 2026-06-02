@@ -4,8 +4,14 @@
 //     2. Source environment: `source install/setup.bash`
 //
 // Before running the following command, place the robot flat on the ground.
-// The following example lifts the left arm and right leg.
-
+//
+// T1 Available Joints:
+//   Left  Arm : FL_HIP_ROLL_Joint  [-0.47, 0.47], FL_HIP_PITCH_Joint [-1.22, 4.36], FL_KNEE_Joint [-2.62, 2.62]
+//   Right Arm : FR_HIP_ROLL_Joint  [-0.47, 0.47], FR_HIP_PITCH_Joint [-1.22, 4.36], FR_KNEE_Joint [-2.62, 2.62]
+//   Left  Leg : RL_HIP_ROLL_Joint  [-1.57, 1.57], RL_HIP_PITCH_Joint [0.00, 3.14], RL_KNEE_Joint [-2.62, -0.17], RL_FOOT_Joint [-10.0, 10.0]
+//   Right Leg : RR_HIP_ROLL_Joint  [-1.57, 1.57], RR_HIP_PITCH_Joint [0.00, 3.14], RR_KNEE_Joint [-2.62, -0.17], RR_FOOT_Joint [-10.0, 10.0]
+//   (Position unit: rad)
+//
 // Example:
 //     ros2 run aimdk_examples_cpp joint_control --ros-args \
 //       -p joint_names:="['FL_HIP_PITCH_Joint']" \

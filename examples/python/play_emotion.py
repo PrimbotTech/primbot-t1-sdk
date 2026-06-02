@@ -1,11 +1,27 @@
 #!/usr/bin/env python3
 
-"""
-Example client for /aimdk_5Fmsgs/srv/PlayEmotion.
+"""Emotion Playback Example Script
 
-Usage Note:
-  It is recommended to specify the 'type' and ('emotion_ids' or 'file_paths') based on your requirements.
-  If no parameters are provided, the script will attempt to play a default emotion.
+Description:
+  This script demonstrates how to play robot emotions using the PlayEmotion service.
+  Supports both emotion ID mode and file path mode. Includes automatic fallback logic:
+  if the default T-series emotion ID (90) fails, it automatically tries the Q-series
+  fallback ID (3003).
+
+Prerequisites:
+  - PlayEmotion service must be available
+  - Emotion assets must be deployed on the robot
+
+Usage:
+  python3 play_emotion.py --ros-args -p type:=<type> -p emotion_ids:=<ids>
+
+Parameters:
+  - type: "emotion" or "file" (Default: emotion)
+  - emotion_ids: Integer array of emotion IDs (Default: [90] for T-series)
+  - file_paths: String array of emotion file paths (used when type=file)
+
+Example:
+  python3 play_emotion.py --ros-args -p type:=emotion -p emotion_ids:=[90]
 """
 
 import rclpy
@@ -23,13 +39,13 @@ class PlayEmotionClient(Node):
     def __init__(self):
         super().__init__("play_emotion_client")
         self.declare_parameter("type", "emotion")
-        self.declare_parameter("emotion_ids", [10])
+        self.declare_parameter("emotion_ids", [90])
         self.declare_parameter("file_paths", Parameter.Type.STRING_ARRAY)
 
         self.type = self.get_parameter("type").value
         self.emotion_ids = self.get_parameter_or(
             "emotion_ids",
-            Parameter("emotion_ids", Parameter.Type.INTEGER_ARRAY, [10]),
+            Parameter("emotion_ids", Parameter.Type.INTEGER_ARRAY, [90]),
         ).value
         self.file_paths = self.get_parameter_or(
             "file_paths",
@@ -50,13 +66,13 @@ class PlayEmotionClient(Node):
             if not self.validate_parameters():
                 return False
 
-            # 一套代码兼容不同机型，T系列默认ID=10，Q系列默认ID=3003
-            # 第一步：尝试原始请求（默认 ID 为 10）
+            # 一套代码兼容不同机型，T系列默认ID=90，Q系列默认ID=3003
+            # 第一步：尝试原始请求（默认 ID 为 90）
             ok = self._call_service(self.type, list(self.emotion_ids), list(self.file_paths))
 
             # 第二步：降级逻辑
             # 如果是播放表情模式，且尝试 ID 10 失败，则自动尝试播放保底 ID 3003
-            if not ok and self.type == "emotion" and 10 in self.emotion_ids:
+            if not ok and self.type == "emotion" and 90 in self.emotion_ids:
                 # 尝试播放保底表情 3003
                 ok = self._call_service("emotion", [3003], [])
 

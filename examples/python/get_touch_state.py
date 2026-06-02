@@ -1,5 +1,22 @@
 #!/usr/bin/env python3
 
+"""Touch State Monitor Example Script
+
+Description:
+  This script subscribes to the touch sensor state topic and prints touch events
+  including event type, touch position, and contact information.
+
+Prerequisites:
+  - Touch sensor hardware must be connected
+  - /aima/hal/touch/state topic must be available
+
+Usage:
+  python3 get_touch_state.py
+
+Example:
+  python3 get_touch_state.py
+"""
+
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data

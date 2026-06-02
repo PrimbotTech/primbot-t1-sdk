@@ -57,7 +57,7 @@ class PlayEmotionClient : public rclcpp::Node
   {
     type_        = this->declare_parameter<std::string>("type", "emotion");
     emotion_ids_ = this->declare_parameter<std::vector<int64_t>>(
-      "emotion_ids", std::vector<int64_t>{10});
+      "emotion_ids", std::vector<int64_t>{90});
     file_paths_ = this->declare_parameter<std::vector<std::string>>(
       "file_paths", std::vector<std::string>{});
 
@@ -77,12 +77,12 @@ class PlayEmotionClient : public rclcpp::Node
     try {
       if (!validate_parameters()) return false;
 
-      // 第一步：尝试原始请求 (默认为 ID 10)
+      // 第一步：尝试原始请求 (默认为 ID 90)
       bool ok = call_service(type_, emotion_ids_, file_paths_);
 
       // 第二步：降级逻辑 (兼容 Q 系列机型)
-      // 如果尝试 ID 10 失败，自动尝试保底 ID 3003
-      if (!ok && type_ == "emotion" && std::find(emotion_ids_.begin(), emotion_ids_.end(), 10) != emotion_ids_.end()) {
+      // 如果尝试 ID 90 失败，自动尝试保底 ID 3003
+      if (!ok && type_ == "emotion" && std::find(emotion_ids_.begin(), emotion_ids_.end(), 90) != emotion_ids_.end()) {
         ok = call_service("emotion", {3003}, {});
       }
 
