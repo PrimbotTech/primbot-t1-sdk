@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 
-"""Example client for CaptureJpegImage service.
+"""Camera JPEG Capture Example Script
 
-The following ROS parameters can be set via startup arguments:
---ros-args -p <name>:=<value>
+Description:
+  This script demonstrates how to capture a single JPEG frame from the robot's camera
+  using the CaptureJpegImage service. Supports T1 camera IDs with interactive selection
+  when camera_id is not provided.
+
+Prerequisites:
+  - CaptureJpegImage service must be available
+  - Camera hardware must be connected
+
+Usage:
+  python3 get_jpg.py --ros-args -p camera_id:=<ID> -p output_file:=<path> -p timeout_ms:=<ms>
 
 Supported parameters:
   - service_name: CaptureJpegImage service name
@@ -28,9 +37,11 @@ Interactive Mode:
   the script will prompt for input. Press Enter to use the default value.
 
 Examples:
-
   # Interactive mode (will prompt for camera_id)
-  python3 /workspace/sdk/examples/python/get_jpg.py 
+  python3 get_jpg.py
+
+  # Non-interactive mode
+  python3 get_jpg.py --ros-args -p camera_id:=head_stereo_left
 """
 
 from pathlib import Path
@@ -202,6 +213,8 @@ class CaptureJpegClient(Node):
             f"width={jpeg.width} "
             f"height={jpeg.height} "
             f"framerate={jpeg.framerate} "
+            f"exposure={jpeg.exposure} "
+            f"gain={jpeg.gain} "
             f"frame_id={image.header.frame_id}"
         )
         return True
