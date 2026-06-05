@@ -328,7 +328,20 @@ private:
       actual_current = recovery_target;
     }
 
-    auto path = find_path_bfs(actual_current, target_action);
+    // 特殊路径：如果从 PASSIVE_DEFAULT 开始，强制使用固定路径
+    std::vector<std::string> path;
+    if (actual_current == "PASSIVE_DEFAULT" && target_action == "BIPED_LOCOMOTION_WBC") {
+      RCLCPP_INFO(this->get_logger(), "Using fixed path from PASSIVE_DEFAULT to BIPED_LOCOMOTION_WBC");
+      path = {
+        "PASSIVE_DEFAULT",
+        "QUADRUPED_STAND_DEFAULT",
+        "QUADRUPED_LOCOMOTION_DEFAULT",
+        "QUADRUPED_TO_BIPED",
+        "BIPED_LOCOMOTION_WBC"
+      };
+    } else {
+      path = find_path_bfs(actual_current, target_action);
+    }
 
     if (path.empty()) {
       RCLCPP_INFO(this->get_logger(), "No path found for %s -> %s, attempting direct transition...",
