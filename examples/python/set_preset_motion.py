@@ -248,7 +248,18 @@ class SetMcPresetMotionClient(Node):
                 return False
             actual_current = recovery_target
 
-        path = self._find_path_bfs(actual_current, target_action)
+        # 特殊路径：如果从 PASSIVE_DEFAULT 开始，强制使用固定路径
+        if actual_current == 'PASSIVE_DEFAULT' and target_action == 'BIPED_LOCOMOTION_WBC':
+            self.get_logger().info('Using fixed path from PASSIVE_DEFAULT to BIPED_LOCOMOTION_WBC')
+            path = [
+                'PASSIVE_DEFAULT',
+                'QUADRUPED_STAND_DEFAULT',
+                'QUADRUPED_LOCOMOTION_DEFAULT',
+                'QUADRUPED_TO_BIPED',
+                'BIPED_LOCOMOTION_WBC'
+            ]
+        else:
+            path = self._find_path_bfs(actual_current, target_action)
 
         if not path:
             self.get_logger().info(f'No path found for {actual_current} -> {target_action}, attempting direct transition...')
