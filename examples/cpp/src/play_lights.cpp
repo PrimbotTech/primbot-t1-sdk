@@ -1,17 +1,43 @@
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/srv/led_strip_command.hpp"
+#include "aimdk_msgs/srv/set_neck_light.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
 #include <cstdint>
 #include <exception>
 #include <iostream>
+#include <limits>
 #include <memory>
 #include <signal.h>
+#include <string>
 #include <thread>
+#include <unordered_map>
 
 constexpr int kMaxRetryCount = 3;
 constexpr std::chrono::milliseconds kServiceCallTimeout(2000);
+
+// CommonState reason 字段对应的中文描述
+const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
+    {0, "无错误"},
+    {1, "开箱状态中"},
+    {2, "开机自检中"},
+    {3, "关机状态中"},
+    {4, "当前形态不支持"},
+    {5, "低电量限制"},
+    {6, "正在充电中"},
+    {7, "动作不在白名单"},
+    {8, "HDS故障"},
+    {9, "当前模式不支持"}
+};
+
+std::string GetReasonDescription(uint32_t reason) {
+  auto it = kReasonDescriptions.find(reason);
+  if (it != kReasonDescriptions.end()) {
+    return it->second;
+  }
+  return "未知原因(" + std::to_string(reason) + ")";
+}
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -28,18 +54,30 @@ void signal_handler(int signal) {
 class PlayLightsClient : public rclcpp::Node {
 public:
   PlayLightsClient() : Node("play_lights_client") {
-    client_ = this->create_client<aimdk_msgs::srv::LedStripCommand>(
+    led_client_ = this->create_client<aimdk_msgs::srv::LedStripCommand>(
         "/aimdk_5Fmsgs/srv/LedStripCommand");
     RCLCPP_INFO(this->get_logger(), "LedStripCommand client node created.");
 
-    while (!client_->wait_for_service(std::chrono::seconds(2))) {
+    neck_client_ = this->create_client<aimdk_msgs::srv::SetNeckLight>(
+        "/aimdk_5Fmsgs/srv/SetNeckLight");
+    RCLCPP_INFO(this->get_logger(), "SetNeckLight client node created.");
+
+    while (!led_client_->wait_for_service(std::chrono::seconds(2))) {
       if (!rclcpp::ok()) {
         return;
       }
       RCLCPP_INFO(this->get_logger(), "Service unavailable, waiting...");
     }
+    
+    while (!neck_client_->wait_for_service(std::chrono::seconds(2))) {
+      if (!rclcpp::ok()) {
+        return;
+      }
+      RCLCPP_INFO(this->get_logger(), "Waiting for SetNeckLight service...");
+    }
+    
     RCLCPP_INFO(this->get_logger(),
-                "Service available, ready to send request.");
+                "All services available, ready to send request.");
   }
 
   bool send_request(uint8_t led_strip_mode, uint8_t r, uint8_t g, uint8_t b,
@@ -65,7 +103,7 @@ public:
 
       // Retry mechanism: up to 3 attempts
       request->request.header.stamp = this->now();
-      auto future = client_->async_send_request(request);
+      auto future = led_client_->async_send_request(request);
       bool completed = false;
       
       for (int i = 0; i < kMaxRetryCount; ++i) {
@@ -83,7 +121,7 @@ public:
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
         
         // Re-send request for retry
-        future = client_->async_send_request(request);
+        future = led_client_->async_send_request(request);
       }
 
       if (!completed) {
@@ -99,16 +137,23 @@ public:
         return false;
       }
       
-      const auto code = response->header.header.code;  
+      const auto code = response->header.header.code;
       const auto status_value = response->header.status.value; 
       RCLCPP_INFO(this->get_logger(),
                   "Response: code=%ld, status_value=%d", code,
                   static_cast<int>(status_value));
-
+      
       if (code == 0 && status_value == 1) {  // SUCCESS = 1
         RCLCPP_INFO(this->get_logger(),
                     "LedStripCommand request accepted.");
         return true;
+      }
+            
+      // 获取失败原因
+      uint32_t reason = response->header.status.reason;
+      if (reason > 0) {
+        std::string reason_desc = GetReasonDescription(reason);
+        RCLCPP_WARN(this->get_logger(), "LedStripCommand rejected: reason=%u - %s", reason, reason_desc.c_str());
       }
 
       RCLCPP_ERROR(this->get_logger(), "LedStripCommand request failed.");
@@ -119,8 +164,98 @@ public:
     }
   }
 
+  bool set_neck_light(bool enable, uint8_t brightness) {
+    try {
+      auto request = std::make_shared<aimdk_msgs::srv::SetNeckLight::Request>();
+      request->request = aimdk_msgs::msg::CommonRequest();
+      request->request.header.stamp = this->now();
+      request->enable = enable;
+      request->brightness = brightness;
+
+      if (enable) {
+        RCLCPP_INFO(this->get_logger(), "Sending SetNeckLight: enable=%s, brightness=%u%%",
+                    enable ? "true" : "false", brightness);
+      } else {
+        RCLCPP_INFO(this->get_logger(), "Sending SetNeckLight: enable=%s",
+                    enable ? "true" : "false");
+      }
+
+      // Retry mechanism: up to 3 attempts
+      auto future = neck_client_->async_send_request(request);
+      bool completed = false;
+      
+      for (int i = 0; i < kMaxRetryCount; ++i) {
+        auto retcode = rclcpp::spin_until_future_complete(
+            shared_from_this(), future, kServiceCallTimeout);
+        
+        if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
+          completed = true;
+          break;
+        }
+
+        RCLCPP_INFO(this->get_logger(),
+                    "SetNeckLight attempt %d/%d timed out, retrying...",
+                    i + 1, kMaxRetryCount);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
+        
+        // Re-send request for retry
+        future = neck_client_->async_send_request(request);
+      }
+
+      if (!completed) {
+        RCLCPP_ERROR(this->get_logger(),
+                     "SetNeckLight service timeout.");
+        return false;
+      }
+
+      auto response = future.get();
+      if (!response) {
+        RCLCPP_ERROR(this->get_logger(), "SetNeckLight call failed.");
+        return false;
+      }
+
+      const auto code = response->header.header.code;
+      if (code == 0) {
+        RCLCPP_INFO(this->get_logger(), "SetNeckLight accepted.");
+        return true;
+      }
+
+      uint32_t reason = response->header.status.reason;
+      if (reason > 0) {
+        RCLCPP_WARN(this->get_logger(), "SetNeckLight rejected: reason=%u - %s",
+                    reason, GetReasonDescription(reason).c_str());
+      }
+
+      RCLCPP_ERROR(this->get_logger(), "SetNeckLight failed: code=%ld", code);
+      return false;
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(this->get_logger(), "Exception in set_neck_light: %s", e.what());
+      return false;
+    }
+  }
+
 private:
-  rclcpp::Client<aimdk_msgs::srv::LedStripCommand>::SharedPtr client_;
+  template<typename ServiceT>
+  bool wait_for_future(
+      rclcpp::Client<ServiceT> &client,
+      typename rclcpp::Client<ServiceT>::SharedFuture future,
+      const typename ServiceT::Request::SharedPtr &request) {
+    for (int i = 0; i < kMaxRetryCount; ++i) {
+      if (rclcpp::spin_until_future_complete(shared_from_this(), future, kServiceCallTimeout) ==
+          rclcpp::FutureReturnCode::SUCCESS) {
+        return true;
+      }
+      RCLCPP_INFO(this->get_logger(), "Timeout %d/%d, retrying...", i + 1, kMaxRetryCount);
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      future = client.async_send_request(request).future.share();
+    }
+    RCLCPP_ERROR(this->get_logger(), "Service timeout.");
+    return false;
+  }
+
+private:
+  rclcpp::Client<aimdk_msgs::srv::LedStripCommand>::SharedPtr led_client_;
+  rclcpp::Client<aimdk_msgs::srv::SetNeckLight>::SharedPtr neck_client_;
 };
 
 int main(int argc, char *argv[]) {
@@ -129,49 +264,126 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    uint8_t led_strip_mode =
-        aimdk_msgs::srv::LedStripCommand::Request::LED_WHITE_ON;
-    uint8_t r = 0;
-    uint8_t g = 0;
-    uint8_t b = 0;
-    uint16_t period = 0;
-
-    int mode_input = 0;
-    std::cout << "Enter led_strip_mode (default "
-              << static_cast<int>(led_strip_mode) << "): ";
-    std::cin >> mode_input;
-    led_strip_mode = static_cast<uint8_t>(mode_input);
-
-    if (led_strip_mode ==
-        aimdk_msgs::srv::LedStripCommand::Request::LED_CUSTOM) {
-      int channel_input = 0;
-      int period_input = 1000;
-
-      std::cout << "Enter r (default 0): ";
-      std::cin >> channel_input;
-      r = static_cast<uint8_t>(channel_input);
-
-      std::cout << "Enter g (default 0): ";
-      std::cin >> channel_input;
-      g = static_cast<uint8_t>(channel_input);
-
-      std::cout << "Enter b (default 255): ";
-      channel_input = 255;
-      std::cin >> channel_input;
-      b = static_cast<uint8_t>(channel_input);
-
-      std::cout << "Enter period(ms, default 1000): ";
-      std::cin >> period_input;
-      period = static_cast<uint16_t>(period_input);
-    }
-
+    // Print menu
+    std::cout << "\n" << std::string(60, '=') << std::endl;
+    std::cout << "  LED Lights Control Menu" << std::endl;
+    std::cout << std::string(60, '=') << std::endl;
+    std::cout << "\nSelect control mode:" << std::endl;
+    std::cout << "  1. LED Strip Control" << std::endl;
+    std::cout << "  2. Neck Light Control" << std::endl;
+    std::cout << std::string(60, '=') << std::endl;
+    
+    int choice = 1;
+    std::cout << "\nEnter choice (1-2, default 1): ";
+    std::cin >> choice;
+    
     g_node = std::make_shared<PlayLightsClient>();
     auto client = std::dynamic_pointer_cast<PlayLightsClient>(g_node);
-    bool ok = false;
-    if (client) {
-      ok = client->send_request(led_strip_mode, r, g, b, period);
+    
+    if (!client) {
+      RCLCPP_ERROR(rclcpp::get_logger("main"), "Failed to create client");
+      g_node.reset();
+      rclcpp::shutdown();
+      return 1;
     }
+    
+    bool ok = false;
+    
+    if (choice == 1) {
+      // LED strip control
+      uint8_t led_strip_mode =
+          aimdk_msgs::srv::LedStripCommand::Request::LED_WHITE_ON;
+      uint8_t r = 0;
+      uint8_t g = 0;
+      uint8_t b = 0;
+      uint16_t period = 0;
 
+      int mode_input;
+      std::cout << "\nEnter led_strip_mode (default "
+                << static_cast<int>(led_strip_mode) << "): ";
+      if (std::cin >> mode_input) {
+        led_strip_mode = static_cast<uint8_t>(mode_input);
+      }
+
+      if (led_strip_mode ==
+          aimdk_msgs::srv::LedStripCommand::Request::LED_CUSTOM) {
+        int channel_input = 0;
+        int period_input = 1000;
+
+        std::cout << "  Enter r (0-255, default 0): ";
+        std::cin >> channel_input;
+        r = static_cast<uint8_t>(channel_input);
+
+        std::cout << "  Enter g (0-255, default 0): ";
+        std::cin >> channel_input;
+        g = static_cast<uint8_t>(channel_input);
+
+        std::cout << "  Enter b (0-255, default 255): ";
+        channel_input = 255;
+        std::cin >> channel_input;
+        b = static_cast<uint8_t>(channel_input);
+
+        std::cout << "  Enter period(ms, default 1000): ";
+        std::cin >> period_input;
+        period = static_cast<uint16_t>(period_input);
+      }
+
+      ok = client->send_request(led_strip_mode, r, g, b, period);
+      if (ok) {
+        std::cout << "\n✓ LED strip control request sent" << std::endl;
+      } else {
+        std::cout << "\n✗ LED strip control request failed" << std::endl;
+      }
+    } else if (choice == 2) {
+      // Neck light control
+      std::cout << "\n--- Neck Light Control ---" << std::endl;
+      
+      bool enable = true;
+      std::string enable_input;
+      std::cout << "  Enable (true/false, default true): ";
+      std::cin >> enable_input;
+      
+      // Handle user input
+      if (enable_input == "" || enable_input == "true" || enable_input == "1") {
+        enable = true;
+      } else if (enable_input == "false" || enable_input == "0") {
+        enable = false;
+      } else {
+        std::cout << "\n✗ Invalid input, please use true/false" << std::endl;
+        g_node.reset();
+        rclcpp::shutdown();
+        return 1;
+      }
+      
+      // Only prompt for brightness when light is enabled
+      int brightness = 50;
+      if (enable) {
+        std::cout << "  Brightness (0-100, default 50): ";
+        std::cin >> brightness;
+        
+        // Validate brightness range
+        if (brightness < 0 || brightness > 100) {
+          std::cout << "\n✗ Brightness must be in range 0-100" << std::endl;
+          g_node.reset();
+          rclcpp::shutdown();
+          return 1;
+        }
+      }
+      
+      ok = client->set_neck_light(enable, static_cast<uint8_t>(brightness));
+      if (ok) {
+        if (enable) {
+          std::cout << "\n✓ Neck light enabled, brightness " << brightness << "%" << std::endl;
+        } else {
+          std::cout << "\n✓ Neck light disabled" << std::endl;
+        }
+      } else {
+        std::cout << "\n✗ Neck light control request failed" << std::endl;
+      }
+    } else {
+      std::cout << "\n✗ Invalid option" << std::endl;
+    }
+    
     g_node.reset();
     rclcpp::shutdown();
     return ok ? 0 : 1;

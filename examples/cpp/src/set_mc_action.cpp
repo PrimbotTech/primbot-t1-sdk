@@ -58,6 +58,28 @@
 constexpr double kServiceCallTimeoutSec = 2.0;
 constexpr int kMaxRetryCount = 3;
 
+// CommonState reason 字段对应的中文描述
+const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
+    {0, "无错误"},
+    {1, "开箱状态中"},
+    {2, "开机自检中"},
+    {3, "关机状态中"},
+    {4, "当前形态不支持"},
+    {5, "低电量限制"},
+    {6, "正在充电中"},
+    {7, "动作不在白名单"},
+    {8, "HDS故障"},
+    {9, "当前模式不支持"}
+};
+
+std::string GetReasonDescription(uint32_t reason) {
+  auto it = kReasonDescriptions.find(reason);
+  if (it != kReasonDescriptions.end()) {
+    return it->second;
+  }
+  return "未知原因(" + std::to_string(reason) + ")";
+}
+
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 bool g_shutdown_requested = false;
 
@@ -78,7 +100,7 @@ const std::unordered_map<std::string, std::vector<std::string>> ACTION_GRAPH = {
     {"PASSIVE_DEFAULT",
      {"QUADRUPED_STAND_DEFAULT", "QUADRUPED_GET_DOWN_DEFAULT",
       "QUADRUPED_SIT_DOWN_DEFAULT", "QUADRUPED_RECOVERY",
-      "BIPED_RECOVERY", "DAMPING_DEFAULT"}},
+      "DAMPING_DEFAULT"}},
     {"QUADRUPED_STAND_DEFAULT",
      {"QUADRUPED_LOCOMOTION_DEFAULT", "QUADRUPED_GET_DOWN_DEFAULT",
       "QUADRUPED_SIT_DOWN_DEFAULT", "QUADRUPED_LOCOMOTION_TERRAIN",
@@ -117,7 +139,6 @@ const std::unordered_map<std::string, std::vector<std::string>> ACTION_GRAPH = {
     {"BIPED_LOCOMOTION_MOONWALK", {"BIPED_LOCOMOTION_WBC"}},
 
     // ── 自动切换边（系统自动完成，navigate_to_action 会确认状态而非重设） ──
-    {"BIPED_RECOVERY", {"BIPED_LOCOMOTION_WBC"}},
     {"QUADRUPED_RECOVERY", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
     {"QUADRUPED_TO_BIPED", {"BIPED_LOCOMOTION_WBC"}},
     {"QUADRUPED_TO_BIPED_ROTATE", {"BIPED_LOCOMOTION_WBC"}},
@@ -242,35 +263,8 @@ public:
     }
   }
 
-  bool navigate_to_action(const std::string &target_action,
-                          const std::string &current_desc, int32_t current_status) {
-    if (current_desc == target_action &&
-        current_status == aimdk_msgs::msg::McActionStatus::RUNNING) {
-      RCLCPP_INFO(this->get_logger(), "Already at target action: %s", target_action.c_str());
-      return true;
-    }
-
-    // 处理需要先恢复到 PASSIVE_DEFAULT 的状态
-    std::string actual_current = current_desc;
-    auto recovery_it = RECOVERY_TO_PASSIVE.find(current_desc);
-    if (recovery_it != RECOVERY_TO_PASSIVE.end()) {
-      const std::string &recovery_target = recovery_it->second;
-      RCLCPP_INFO(this->get_logger(), "Recovery: switching from %s to %s...",
-                  current_desc.c_str(), recovery_target.c_str());
-      if (!set_action(recovery_target) || !wait_for_action(recovery_target)) return false;
-      actual_current = recovery_target;
-    }
-
-    auto path = find_path_bfs(actual_current, target_action);
-
-    if (path.empty()) {
-      // 图中找不到路径：尝试直接转换（由服务端校验合法性）
-      RCLCPP_INFO(this->get_logger(), "No path found for %s -> %s, attempting direct transition...",
-                  actual_current.c_str(), target_action.c_str());
-      if (!set_action(target_action)) return false;
-      return wait_for_action(target_action, std::chrono::seconds(5));
-    }
-
+  // 执行路径中的每个步骤
+  bool execute_path(const std::vector<std::string> &path) {
     for (size_t i = 1; i < path.size(); ++i) {
       const std::string &target = path[i];
       RCLCPP_INFO(this->get_logger(), "Path step %zu/%zu: Switching to %s...",
@@ -291,8 +285,52 @@ public:
       // 等待物理动作稳定后再执行下一步
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
-
     return true;
+  }
+
+  bool navigate_to_action(const std::string &target_action,
+                          const std::string &current_desc, int32_t current_status) {
+    if (current_desc == target_action &&
+        current_status == aimdk_msgs::msg::McActionStatus::RUNNING) {
+      RCLCPP_INFO(this->get_logger(), "Already at target action: %s", target_action.c_str());
+      return true;
+    }
+
+    // 处理需要先恢复到 PASSIVE_DEFAULT 的状态
+    std::string actual_current = current_desc;
+    auto recovery_it = RECOVERY_TO_PASSIVE.find(current_desc);
+    if (recovery_it != RECOVERY_TO_PASSIVE.end()) {
+      const std::string &recovery_target = recovery_it->second;
+      RCLCPP_INFO(this->get_logger(), "Recovery: switching from %s to %s...",
+                  current_desc.c_str(), recovery_target.c_str());
+      if (!set_action(recovery_target) || !wait_for_action(recovery_target)) return false;
+      actual_current = recovery_target;
+    }
+
+    // 特殊路径：如果从 PASSIVE_DEFAULT 开始，强制使用固定路径
+    if (actual_current == "PASSIVE_DEFAULT" && target_action == "BIPED_LOCOMOTION_WBC") {
+      RCLCPP_INFO(this->get_logger(), "Using fixed path from PASSIVE_DEFAULT to BIPED_LOCOMOTION_WBC");
+      std::vector<std::string> path = {
+          "PASSIVE_DEFAULT",
+          "QUADRUPED_STAND_DEFAULT",
+          "QUADRUPED_LOCOMOTION_DEFAULT",
+          "QUADRUPED_TO_BIPED",
+          "BIPED_LOCOMOTION_WBC"
+      };
+      return execute_path(path);
+    }
+
+    auto path = find_path_bfs(actual_current, target_action);
+
+    if (path.empty()) {
+      // 图中找不到路径：尝试直接转换（由服务端校验合法性）
+      RCLCPP_INFO(this->get_logger(), "No path found for %s -> %s, attempting direct transition...",
+                  actual_current.c_str(), target_action.c_str());
+      if (!set_action(target_action)) return false;
+      return wait_for_action(target_action, std::chrono::seconds(5));
+    }
+
+    return execute_path(path);
   }
 
   bool wait_for_action(
@@ -463,6 +501,14 @@ private:
       if (response->response.status.value == aimdk_msgs::msg::CommonState::SUCCESS) {
         RCLCPP_INFO(this->get_logger(), "SetMcAction request accepted by service.");
         return true;
+      }
+      
+      // 获取失败原因
+      uint32_t reason = response->response.status.reason;
+      if (reason > 0) {
+        std::string reason_desc = GetReasonDescription(reason);
+        RCLCPP_WARN(this->get_logger(), "SetMcAction rejected: reason=%u - %s", 
+                    reason, reason_desc.c_str());
       }
 
       RCLCPP_ERROR(this->get_logger(), "Failed to set robot mode: %s", response->response.message.c_str());

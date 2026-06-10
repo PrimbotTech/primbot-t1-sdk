@@ -32,6 +32,24 @@ from rclpy.node import Node
 from rclpy.parameter import Parameter
 
 from aimdk_msgs.msg import CommonRequest, CommonState
+
+# CommonState reason 字段对应的中文描述
+REASON_DESCRIPTIONS = {
+    0: '无错误',
+    1: '开箱状态中',
+    2: '开机自检中',
+    3: '关机状态中',
+    4: '当前形态不支持',
+    5: '低电量限制',
+    6: '正在充电中',
+    7: '动作不在白名单',
+    8: 'HDS故障',
+    9: '当前模式不支持'
+}
+
+def get_reason_description(reason: int) -> str:
+    """获取失败原因的中文描述"""
+    return REASON_DESCRIPTIONS.get(reason, f'未知原因({reason})')
 from aimdk_msgs.srv import PlayEmotion
 
 
@@ -123,6 +141,14 @@ class PlayEmotionClient(Node):
             self.get_logger().info(f"Request accepted (code={code}, status={status}).")
             return True
 
+        # 获取失败原因
+        reason = getattr(response.header.status, 'reason', 0)
+        if reason > 0:
+            reason_desc = get_reason_description(reason)
+            self.get_logger().warning(
+                f"Request rejected: reason={reason} - {reason_desc}"
+            )
+        
         self.get_logger().warning(f"Request rejected by service (code={code}, status={status}).")
         return False
 

@@ -52,6 +52,24 @@ from aimdk_msgs.srv import GetMcAction, SetMcAction, SetMcMotion
 SERVICE_CALL_TIMEOUT_SEC = 2.0
 MAX_RETRY_COUNT = 3
 
+# CommonState reason 字段对应的中文描述
+REASON_DESCRIPTIONS = {
+    0: '无错误',
+    1: '开箱状态中',
+    2: '开机自检中',
+    3: '关机状态中',
+    4: '当前形态不支持',
+    5: '低电量限制',
+    6: '正在充电中',
+    7: '动作不在白名单',
+    8: 'HDS故障',
+    9: '当前模式不支持'
+}
+
+def get_reason_description(reason: int) -> str:
+    """获取失败原因的中文描述"""
+    return REASON_DESCRIPTIONS.get(reason, f'未知原因({reason})')
+
 # T1狗形状态机有向图（基于 qd1_t1d5/action_ruler.yaml 及状态机流程图）
 # 定义状态间的合法转换边，navigate_to_action 使用 BFS 自动寻路
 # 所有四足目标状态统一经过 QUADRUPED_LOCOMOTION_DEFAULT 后跳转
@@ -62,7 +80,6 @@ ACTION_GRAPH = {
         'QUADRUPED_GET_DOWN_DEFAULT',
         'QUADRUPED_SIT_DOWN_DEFAULT',
         'QUADRUPED_RECOVERY',
-        'BIPED_RECOVERY',
         'DAMPING_DEFAULT',
     ],
     'QUADRUPED_STAND_DEFAULT': [
@@ -122,7 +139,6 @@ ACTION_GRAPH = {
     'BIPED_LOCOMOTION_BACKBEND': ['BIPED_LOCOMOTION_WBC'],
     'BIPED_LOCOMOTION_MOONWALK': ['BIPED_LOCOMOTION_WBC'],
     # ── 自动切换边（系统自动完成，navigate_to_action 会确认状态而非重设） ──
-    'BIPED_RECOVERY': ['BIPED_LOCOMOTION_WBC'],
     'QUADRUPED_RECOVERY': ['QUADRUPED_LOCOMOTION_DEFAULT'],
     'QUADRUPED_TO_BIPED': ['BIPED_LOCOMOTION_WBC'],
     'QUADRUPED_TO_BIPED_ROTATE': ['BIPED_LOCOMOTION_WBC'],
@@ -286,7 +302,18 @@ class SetMcActionClient(Node):
                 return False
             actual_current = recovery_target
 
-        path = self._find_path_bfs(actual_current, target_action)
+        # 特殊路径：如果从 PASSIVE_DEFAULT 开始，强制使用固定路径
+        if actual_current == 'PASSIVE_DEFAULT' and target_action == 'BIPED_LOCOMOTION_WBC':
+            self.get_logger().info('Using fixed path from PASSIVE_DEFAULT to BIPED_LOCOMOTION_WBC')
+            path = [
+                'PASSIVE_DEFAULT',
+                'QUADRUPED_STAND_DEFAULT',
+                'QUADRUPED_LOCOMOTION_DEFAULT',
+                'QUADRUPED_TO_BIPED',
+                'BIPED_LOCOMOTION_WBC'
+            ]
+        else:
+            path = self._find_path_bfs(actual_current, target_action)
 
         if not path:
             # 图中找不到路径：尝试直接转换（由服务端校验合法性）
@@ -379,6 +406,14 @@ class SetMcActionClient(Node):
             if response.response.status.value == CommonState.SUCCESS:
                 self.get_logger().info('SetMcAction request accepted by service.')
                 return True
+            
+            # 获取失败原因
+            reason = getattr(response.response.status, 'reason', 0)
+            if reason > 0:
+                reason_desc = get_reason_description(reason)
+                self.get_logger().warning(
+                    f'SetMcAction rejected: reason={reason} - {reason_desc}'
+                )
 
             self.get_logger().error(f'Failed to set robot mode: {response.response.message}')
             return False
