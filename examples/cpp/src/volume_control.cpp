@@ -40,6 +40,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 #include <utility>
 
@@ -47,6 +48,28 @@ using namespace std::chrono_literals;
 
 namespace
 {
+
+// CommonState reason 字段对应的中文描述
+const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
+    {0, "无错误"},
+    {1, "开箱状态中"},
+    {2, "开机自检中"},
+    {3, "关机状态中"},
+    {4, "当前形态不支持"},
+    {5, "低电量限制"},
+    {6, "正在充电中"},
+    {7, "动作不在白名单"},
+    {8, "HDS故障"},
+    {9, "当前模式不支持"}
+};
+
+std::string GetReasonDescription(uint32_t reason) {
+  auto it = kReasonDescriptions.find(reason);
+  if (it != kReasonDescriptions.end()) {
+    return it->second;
+  }
+  return "未知原因(" + std::to_string(reason) + ")";
+}
 
 constexpr char kTtsText[] =
   "大家好，我是启元机器人。现在为你演示音频控制示例。"
@@ -302,6 +325,13 @@ class VolumeControlClient : public rclcpp::Node
                 response->header.header.code, response->header.status.value,
                 static_cast<int>(response->tts_resp.is_success),
                 response->tts_resp.error_message.c_str());
+    
+    // 获取失败原因
+    uint32_t reason = response->header.status.reason;
+    if (reason > 0) {
+      std::string reason_desc = GetReasonDescription(reason);
+      RCLCPP_WARN(this->get_logger(), "PlayTts rejected: reason=%u - %s", reason, reason_desc.c_str());
+    }
 
     return response->tts_resp.is_success;
   }
@@ -322,6 +352,15 @@ class VolumeControlClient : public rclcpp::Node
                 set_response->response.header.code,
                 set_response->response.status.value,
                 set_response->audio_volume);
+    
+    // 获取失败原因
+    {
+      uint32_t reason = set_response->response.status.reason;
+      if (reason > 0) {
+        std::string reason_desc = GetReasonDescription(reason);
+        RCLCPP_WARN(this->get_logger(), "SetVolume rejected: reason=%u - %s", reason, reason_desc.c_str());
+      }
+    }
 
     auto get_response = call_service<aimdk_msgs::srv::GetVolume>(
       get_volume_client_, build_get_volume_request(), "GetVolume");
@@ -332,6 +371,15 @@ class VolumeControlClient : public rclcpp::Node
                 get_response->response.header.code,
                 get_response->response.status.value,
                 get_response->audio_volume);
+    
+    // 获取失败原因
+    {
+      uint32_t reason = get_response->response.status.reason;
+      if (reason > 0) {
+        std::string reason_desc = GetReasonDescription(reason);
+        RCLCPP_WARN(this->get_logger(), "GetVolume rejected: reason=%u - %s", reason, reason_desc.c_str());
+      }
+    }
 
     if (get_response->audio_volume != target_volume) {
       RCLCPP_ERROR(this->get_logger(),
@@ -370,6 +418,15 @@ class VolumeControlClient : public rclcpp::Node
                 set_response->response.header.code,
                 set_response->response.status.value,
                 static_cast<int>(set_response->is_mute));
+    
+    // 获取失败原因
+    {
+      uint32_t reason = set_response->response.status.reason;
+      if (reason > 0) {
+        std::string reason_desc = GetReasonDescription(reason);
+        RCLCPP_WARN(this->get_logger(), "SetMute rejected: reason=%u - %s", reason, reason_desc.c_str());
+      }
+    }
 
     auto get_request                  = std::make_shared<aimdk_msgs::srv::GetMute::Request>();
     get_request->request              = build_common_request();
@@ -383,6 +440,15 @@ class VolumeControlClient : public rclcpp::Node
                 get_response->response.header.code,
                 get_response->response.status.value,
                 static_cast<int>(get_response->is_mute));
+    
+    // 获取失败原因
+    {
+      uint32_t reason = get_response->response.status.reason;
+      if (reason > 0) {
+        std::string reason_desc = GetReasonDescription(reason);
+        RCLCPP_WARN(this->get_logger(), "GetMute rejected: reason=%u - %s", reason, reason_desc.c_str());
+      }
+    }
 
     if (get_response->is_mute != target_mute) {
       RCLCPP_ERROR(this->get_logger(),

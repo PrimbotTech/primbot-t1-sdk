@@ -34,9 +34,33 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <unordered_map>
+#include <string>
 
 constexpr int kMaxRetryCount = 3;
 constexpr std::chrono::seconds kServiceCallTimeout(2);
+
+// CommonState reason 字段对应的中文描述
+const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
+    {0, "无错误"},
+    {1, "开箱状态中"},
+    {2, "开机自检中"},
+    {3, "关机状态中"},
+    {4, "当前形态不支持"},
+    {5, "低电量限制"},
+    {6, "正在充电中"},
+    {7, "动作不在白名单"},
+    {8, "HDS故障"},
+    {9, "当前模式不支持"}
+};
+
+std::string GetReasonDescription(uint32_t reason) {
+  auto it = kReasonDescriptions.find(reason);
+  if (it != kReasonDescriptions.end()) {
+    return it->second;
+  }
+  return "未知原因(" + std::to_string(reason) + ")";
+}
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -149,6 +173,13 @@ class PlayEmotionClient : public rclcpp::Node
     if (code == 0 || status == aimdk_msgs::msg::CommonState::SUCCESS) {
       RCLCPP_INFO(this->get_logger(), "Request accepted (code=%ld, status=%d).", code, status);
       return true;
+    }
+    
+    // 获取失败原因
+    uint32_t reason = res->header.status.reason;
+    if (reason > 0) {
+      std::string reason_desc = GetReasonDescription(reason);
+      RCLCPP_WARN(this->get_logger(), "Request rejected: reason=%u - %s", reason, reason_desc.c_str());
     }
     
     RCLCPP_WARN(this->get_logger(), "Request rejected by service (code=%ld, status=%d).", code, status);

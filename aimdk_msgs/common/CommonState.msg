@@ -23,3 +23,26 @@ int32 PENDING = 200
 int32 CREATED = 300
 # 运行中
 int32 RUNNING = 400
+
+
+uint32 reason
+
+# 开箱状态中
+uint32 REASON_OPENBOX       = 1
+# 开机自检中
+uint32 REASON_STARTUP_CHECK = 2
+# 关机状态中
+uint32 REASON_SHUTDOWN      = 3
+# 当前形态不支持
+uint32 REASON_FROM          = 4
+# 低电量限制
+uint32 REASON_LOW_BATTERY   = 5
+# 正在充电中
+uint32 REASON_CHARGE        = 6
+# 动作不在白名单
+uint32 REASON_NO_WHITELIST  = 7
+# HDS故障
+uint32 REASON_HDS           = 8
+# 当前模式不支持
+uint32 REASON_ACTION        = 9
+
