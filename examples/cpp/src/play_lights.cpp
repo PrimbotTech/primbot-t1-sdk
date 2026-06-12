@@ -28,7 +28,12 @@ const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
     {6, "正在充电中"},
     {7, "动作不在白名单"},
     {8, "HDS故障"},
-    {9, "当前模式不支持"}
+    {9, "当前模式不支持"},
+    {10, "前方有障碍物"},
+    {11, "后方有障碍物"},
+    {12, "左方有障碍物"},
+    {13, "右方有障碍物"},
+    {14, "上方有障碍物"}
 };
 
 std::string GetReasonDescription(uint32_t reason) {
