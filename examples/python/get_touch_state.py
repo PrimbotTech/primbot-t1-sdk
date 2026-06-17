@@ -49,6 +49,7 @@ class TouchStateEcho(Node):
             f"  sequence: {msg.header.sequence}",
             f"  stamp:    {self._to_seconds(msg.header.stamp):.6f} s",
             f"  meas:     {self._to_seconds(msg.header.meas_stamp):.6f} s",
+            f"  sensor:   {int(msg.sensor_id)}",
             f"  event:    {int(msg.event_type)}",
         ]
 

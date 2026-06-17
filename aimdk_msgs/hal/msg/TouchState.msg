@@ -5,6 +5,11 @@
 # 触摸传感器状态消息
 MessageHeader header
 
+# 触摸事件类型 
+# T：id为1表示背部传感器，id为2表示胸部传感器
+# Q：id为1表示头部传感器
+uint8 sensor_id
+
 # 触摸事件类型
 uint8 event_type
 
