@@ -1,6 +1,7 @@
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/srv/led_strip_command.hpp"
 #include "aimdk_msgs/srv/set_neck_light.hpp"
+#include "aimdk_msgs/msg/neck_light_state.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
@@ -263,6 +264,33 @@ private:
   rclcpp::Client<aimdk_msgs::srv::SetNeckLight>::SharedPtr neck_client_;
 };
 
+class GetNeckLightStateSubscriber: public rclcpp::Node{
+public:
+   GetNeckLightStateSubscriber(): Node("get_neck_light_state_subscriber") {
+    current_state_ = nullptr;
+    subscription_ = this->create_subscription<aimdk_msgs::msg::NeckLightState>(
+        "/aima/hal/neck_light/state", 10,
+        std::bind(&GetNeckLightStateSubscriber::state_callback, this, std::placeholders::_1));
+    RCLCPP_INFO(this->get_logger(), "Neck Light State Subscriber node created.");
+  }
+
+  aimdk_msgs::msg::NeckLightState::SharedPtr current_state_ = nullptr;
+
+private:
+  void state_callback(const aimdk_msgs::msg::NeckLightState::SharedPtr msg) {
+    current_state_ = msg;
+    if (msg->enable) {
+      RCLCPP_INFO(this->get_logger(), "State updated: enable=%d, brightness=%d", 
+                  msg->enable, msg->brightness);
+    }
+    if (!msg->enable) {
+      RCLCPP_INFO(this->get_logger(), "State updated: enable=%d", msg->enable);
+    }
+  }
+
+  rclcpp::Subscription<aimdk_msgs::msg::NeckLightState>::SharedPtr subscription_;
+};
+
 int main(int argc, char *argv[]) {
   try {
     rclcpp::init(argc, argv);
@@ -341,6 +369,13 @@ int main(int argc, char *argv[]) {
       }
     } else if (choice == 2) {
       // Neck light control
+      // Create state subscriber to monitor light state
+      auto state_subscriber = std::make_shared<GetNeckLightStateSubscriber>();
+      
+      // Spin briefly to receive initial state
+      rclcpp::spin_some(state_subscriber);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      
       std::cout << "\n--- Neck Light Control ---" << std::endl;
       
       bool enable = true;
@@ -381,6 +416,30 @@ int main(int argc, char *argv[]) {
           std::cout << "\n✓ Neck light enabled, brightness " << brightness << "%" << std::endl;
         } else {
           std::cout << "\n✓ Neck light disabled" << std::endl;
+        }
+        
+        // Wait for state update and display
+        std::cout << "\nWaiting for state update..." << std::endl;
+        bool state_received = false;
+        for (int i = 0; i < 5; ++i) {
+          rclcpp::spin_some(state_subscriber);
+          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+          
+          if (state_subscriber->current_state_) {
+            auto state = state_subscriber->current_state_;
+            if (state->enable) {
+              std::cout << "Current state: enable=" << state->enable 
+                       << ", brightness=" << static_cast<int>(state->brightness) << std::endl;
+            } else {
+              std::cout << "Current state: enable=" << state->enable << std::endl;
+            }
+            state_received = true;
+            break;
+          }
+        }
+        
+        if (!state_received) {
+          std::cout << "No state update received (topic may not be published)" << std::endl;
         }
       } else {
         std::cout << "\n✗ Neck light control request failed" << std::endl;

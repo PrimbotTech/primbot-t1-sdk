@@ -23,6 +23,7 @@ import rclpy.logging
 from rclpy.node import Node
 
 from aimdk_msgs.msg import CommonRequest
+from aimdk_msgs.msg import NeckLightState
 from aimdk_msgs.srv import LedStripCommand
 from aimdk_msgs.srv import SetNeckLight
 
@@ -219,10 +220,28 @@ def read_int(prompt: str, default: int) -> int:
         return default
     return int(text)
 
+class GetNeckLightStateSubscriber(Node):
+    def __init__(self):
+        super().__init__("get_neck_light_state_subscriber")
+        self.current_state = None  # Store the latest state
+        self.subscription = self.create_subscription(NeckLightState, "/aima/hal/neck_light/state", self.state_callback, 10)
+        self.get_logger().info("Neck Light State Subscriber node created.")
+    
+    def state_callback(self, msg):
+        self.current_state = msg  # Save the state
+        if msg.enable:
+            self.get_logger().info(
+                f'State updated: enable={msg.enable}, brightness={msg.brightness}'
+            )
+        if not msg.enable:
+            self.get_logger().info(
+                f'State updated: enable={msg.enable}'
+            )
 
 def main(args=None):
     rclpy.init(args=args)
     node = None
+    state_subscriber = None
     try:
         # Print menu
         print("\n" + "="*60)
@@ -262,6 +281,11 @@ def main(args=None):
                 
         elif choice == 2:
             # Neck light control
+            # Create state subscriber to monitor light state
+            state_subscriber = GetNeckLightStateSubscriber()
+            # Spin briefly to receive initial state
+            rclpy.spin_once(state_subscriber, timeout_sec=1.0)
+            
             print("\n--- Neck Light Control ---")
             enable_input = input("  Enable (true/false, default true): ").strip().lower()
             
@@ -298,6 +322,20 @@ def main(args=None):
                     print(f"\n✓ Neck light enabled, brightness {brightness}%")
                 else:
                     print("\n✓ Neck light disabled")
+                
+                # Wait for state update and display
+                print("\nWaiting for state update...")
+                for _ in range(5):  # Try 5 times
+                    rclpy.spin_once(state_subscriber, timeout_sec=0.5)
+                    if state_subscriber.current_state:
+                        state = state_subscriber.current_state
+                        if state.enable:
+                            print(f"Current state: enable={state.enable}, brightness={state.brightness}")
+                        else:
+                            print(f"Current state: enable={state.enable}")
+                        break
+                else:
+                    print("No state update received (topic may not be published)")
             else:
                 print("\n✗ Neck light control request failed")
         else:
@@ -305,6 +343,8 @@ def main(args=None):
         
         if node is not None:
             node.destroy_node()
+        if state_subscriber is not None:
+            state_subscriber.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
         return 0
@@ -314,6 +354,8 @@ def main(args=None):
         )
         if node is not None:
             node.destroy_node()
+        if state_subscriber is not None:
+            state_subscriber.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
         return 1
