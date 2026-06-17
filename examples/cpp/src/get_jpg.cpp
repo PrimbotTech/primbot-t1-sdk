@@ -35,6 +35,7 @@
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"
 #include "aimdk_msgs/srv/capture_jpeg_image.hpp"
+#include "aimdk_msgs/srv/set_servo.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <algorithm>
@@ -57,6 +58,7 @@ namespace {
 
 constexpr char kDefaultServiceName[] =
     "/aima/hal/camera/CaptureJpegImage";
+constexpr char kSetServoServiceName[] = "/aimdk_5Fmsgs/srv/SetServo";
 constexpr char kDefaultOutputFile[] = "/tmp/camera_capture.jpg";
 constexpr int kDefaultRequestTimeoutMs = 5000;
 constexpr int kServiceWaitSeconds = 2;
@@ -174,6 +176,8 @@ public:
     output_path_ = prepare_output_path(output_file_);
     client_ = this->create_client<aimdk_msgs::srv::CaptureJpegImage>(
         service_name_);
+    servo_client_ = this->create_client<aimdk_msgs::srv::SetServo>(
+        kSetServoServiceName);
 
     RCLCPP_INFO(this->get_logger(),
                 "CaptureJpegImage client created. service=%s camera_id=%s "
@@ -250,6 +254,56 @@ public:
     RCLCPP_INFO(this->get_logger(),
                 "Received signal %d, shutting down get_jpg...", signal);
     rclcpp::shutdown();
+  }
+
+  bool set_servo(int position, int speed) {
+    if (position < 0 || position > 90) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Invalid position: %d. Must be 0-90 degrees.", position);
+      return false;
+    }
+
+    if (speed < 100 || speed > 1000) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "Invalid speed: %d. Must be 100-1000.", speed);
+      return false;
+    }
+
+    if (!servo_client_->wait_for_service(std::chrono::seconds(kServiceWaitSeconds))) {
+      RCLCPP_ERROR(this->get_logger(), "SetServo service not available.");
+      return false;
+    }
+
+    auto request = std::make_shared<aimdk_msgs::srv::SetServo::Request>();
+    request->request = aimdk_msgs::msg::CommonRequest();
+    request->request.header.stamp = this->now();
+    request->position = position;
+    request->speed = speed;
+
+    auto future = servo_client_->async_send_request(request);
+    const auto retcode = rclcpp::spin_until_future_complete(
+        shared_from_this(), future, std::chrono::seconds(5));
+
+    if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(), "SetServo call timed out.");
+      return false;
+    }
+
+    const auto response = future.get();
+    if (!response) {
+      RCLCPP_ERROR(this->get_logger(), "SetServo returned empty response.");
+      return false;
+    }
+
+    const auto code = response->header.header.code;
+    if (code != 0) {
+      RCLCPP_ERROR(this->get_logger(), "SetServo failed: code=%ld", code);
+      return false;
+    }
+
+    RCLCPP_INFO(this->get_logger(), "SetServo success. position=%d speed=%d",
+                position, speed);
+    return true;
   }
 
 private:
@@ -332,6 +386,7 @@ private:
   std::filesystem::path output_path_;
   bool stop_requested_{false};
   rclcpp::Client<aimdk_msgs::srv::CaptureJpegImage>::SharedPtr client_;
+  rclcpp::Client<aimdk_msgs::srv::SetServo>::SharedPtr servo_client_;
 };
 
 void signal_handler(int signal) {
@@ -356,22 +411,72 @@ void signal_handler(int signal) {
 
 }  // namespace
 
+std::string get_int_from_user(const std::string &prompt, int min_val, int max_val, int default_val = -1) {
+  std::string input;
+  while (true) {
+    std::cout << prompt;
+    std::getline(std::cin, input);
+    
+    if (input.empty() && default_val != -1) {
+      return std::to_string(default_val);
+    }
+    
+    try {
+      int value = std::stoi(input);
+      if (value >= min_val && value <= max_val) {
+        return std::to_string(value);
+      }
+      std::cout << "Error: Value must be between " << min_val << " and " << max_val << "." << std::endl;
+    } catch (const std::exception &) {
+      std::cout << "Error: Invalid input. Please enter a number." << std::endl;
+    }
+  }
+}
+
 int main(int argc, char *argv[]) {
   try {
-    // Get camera_id from user input before creating the node
-    std::string camera_id = get_camera_id_from_user();
-    
     rclcpp::init(argc, argv);
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
 
-    auto node = std::make_shared<CaptureJpegClient>(camera_id);
-    g_node = node;
-    const bool ok = node->capture_once();
+    std::cout << "\n" << std::string(60, '=') << std::endl;
+    std::cout << "  Camera & Servo Control Menu" << std::endl;
+    std::cout << std::string(60, '=') << std::endl;
+    std::cout << "\nSelect control mode:" << std::endl;
+    std::cout << "  1. Capture JPEG Image" << std::endl;
+    std::cout << "  2. Set Servo Position" << std::endl;
+    std::cout << "\nEnter your choice (1 or 2): ";
+    
+    std::string choice;
+    std::getline(std::cin, choice);
+    
+    if (choice == "1") {
+      // Camera capture mode
+      std::string camera_id = get_camera_id_from_user();
+      auto node = std::make_shared<CaptureJpegClient>(camera_id);
+      g_node = node;
+      const bool ok = node->capture_once();
 
-    g_node.reset();
-    rclcpp::shutdown();
-    return ok ? 0 : 1;
+      g_node.reset();
+      rclcpp::shutdown();
+      return ok ? 0 : 1;
+    } else if (choice == "2") {
+      // Servo control mode
+      int position = std::stoi(get_int_from_user("\nEnter servo position (0-90 degrees): ", 0, 90));
+      int speed = std::stoi(get_int_from_user("Enter servo speed (100-1000): ", 100, 1000));
+      
+      auto node = std::make_shared<CaptureJpegClient>("");
+      g_node = node;
+      const bool ok = node->set_servo(position, speed);
+
+      g_node.reset();
+      rclcpp::shutdown();
+      return ok ? 0 : 1;
+    } else {
+      std::cout << "Invalid choice. Exiting..." << std::endl;
+      rclcpp::shutdown();
+      return 1;
+    }
   } catch (const std::exception &e) {
     RCLCPP_ERROR(rclcpp::get_logger("get_jpg"),
                  "Program exited with exception: %s", e.what());
