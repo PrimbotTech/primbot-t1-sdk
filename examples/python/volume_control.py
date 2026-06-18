@@ -50,7 +50,9 @@ REASON_DESCRIPTIONS = {
     11: '后方有障碍物',
     12: '左方有障碍物',
     13: '右方有障碍物',
-    14: '上方有障碍物'
+    14: '上方有障碍物',
+    15: '其他任务正在运行',
+    16: '机器人已经是目标状态'
 }
 
 def get_reason_description(reason: int) -> str:
