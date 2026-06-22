@@ -29,30 +29,6 @@ from rclpy.node import Node
 
 from aimdk_msgs.msg import CommonRequest, CommonState
 
-# CommonState reason 字段对应的中文描述
-REASON_DESCRIPTIONS = {
-    0: '无错误',
-    1: '开箱状态中',
-    2: '开机自检中',
-    3: '关机状态中',
-    4: '当前形态不支持',
-    5: '低电量限制',
-    6: '正在充电中',
-    7: '动作不在白名单',
-    8: 'HDS故障',
-    9: '当前模式不支持',
-    10: '前方有障碍物',
-    11: '后方有障碍物',
-    12: '左方有障碍物',
-    13: '右方有障碍物',
-    14: '上方有障碍物',
-    15: '其他任务正在运行',
-    16: '机器人已经是目标状态'
-}
-
-def get_reason_description(reason: int) -> str:
-    """获取失败原因的中文描述"""
-    return REASON_DESCRIPTIONS.get(reason, f'未知原因({reason})')
 from aimdk_msgs.srv import PlayAudioFile
 
 
@@ -152,18 +128,11 @@ class PlayAudioFileClient(Node):
                     f"code={code} status={status} msg={response.response.message}"
                 )
                 return True
-            
-            # 获取失败原因
-            reason = getattr(response.response.status, 'reason', 0)
-            if reason > 0:
-                reason_desc = get_reason_description(reason)
-                self.get_logger().warning(
-                    f"PlayAudioFile rejected: reason={reason} - {reason_desc}"
-                )
 
             self.get_logger().error(
-                "PlayAudioFile rejected. "
-                f"code={code} status={status} msg={response.response.message}"
+                f"PlayAudioFile failed. "
+                f"code={code} status={status} "
+                f"msg={response.response.message}"
             )
             return False
         except Exception as error:  # noqa: BLE001

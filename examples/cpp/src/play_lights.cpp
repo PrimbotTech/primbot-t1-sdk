@@ -18,35 +18,6 @@
 constexpr int kMaxRetryCount = 3;
 constexpr std::chrono::milliseconds kServiceCallTimeout(2000);
 
-// CommonState reason 字段对应的中文描述
-const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
-    {0, "无错误"},
-    {1, "开箱状态中"},
-    {2, "开机自检中"},
-    {3, "关机状态中"},
-    {4, "当前形态不支持"},
-    {5, "低电量限制"},
-    {6, "正在充电中"},
-    {7, "动作不在白名单"},
-    {8, "HDS故障"},
-    {9, "当前模式不支持"},
-    {10, "前方有障碍物"},
-    {11, "后方有障碍物"},
-    {12, "左方有障碍物"},
-    {13, "右方有障碍物"},
-    {14, "上方有障碍物"},
-    {15, "其他任务正在运行"},
-    {16, "机器人已经是目标状态"}
-};
-
-std::string GetReasonDescription(uint32_t reason) {
-  auto it = kReasonDescriptions.find(reason);
-  if (it != kReasonDescriptions.end()) {
-    return it->second;
-  }
-  return "未知原因(" + std::to_string(reason) + ")";
-}
-
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
 void signal_handler(int signal) {
@@ -157,14 +128,10 @@ public:
         return true;
       }
             
-      // 获取失败原因
-      uint32_t reason = response->header.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "LedStripCommand rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
-
-      RCLCPP_ERROR(this->get_logger(), "LedStripCommand request failed.");
+      RCLCPP_ERROR(this->get_logger(),
+                   "LedStripCommand failed. code=%ld status=%d msg=%s",
+                   code, static_cast<int>(status_value),
+                   response->header.message.c_str());
       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
@@ -228,13 +195,11 @@ public:
         return true;
       }
 
-      uint32_t reason = response->header.status.reason;
-      if (reason > 0) {
-        RCLCPP_WARN(this->get_logger(), "SetNeckLight rejected: reason=%u - %s",
-                    reason, GetReasonDescription(reason).c_str());
-      }
-
-      RCLCPP_ERROR(this->get_logger(), "SetNeckLight failed: code=%ld", code);
+      RCLCPP_ERROR(this->get_logger(),
+                   "SetNeckLight failed. code=%ld status=%d msg=%s",
+                   code,
+                   response->header.status.value,
+                   response->header.header.message.c_str());
       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception in set_neck_light: %s", e.what());

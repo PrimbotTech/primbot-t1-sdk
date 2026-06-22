@@ -27,31 +27,6 @@ from aimdk_msgs.msg import NeckLightState
 from aimdk_msgs.srv import LedStripCommand
 from aimdk_msgs.srv import SetNeckLight
 
-# CommonState reason 字段对应的中文描述
-REASON_DESCRIPTIONS = {
-    0: '无错误',
-    1: '开箱状态中',
-    2: '开机自检中',
-    3: '关机状态中',
-    4: '当前形态不支持',
-    5: '低电量限制',
-    6: '正在充电中',
-    7: '动作不在白名单',
-    8: 'HDS故障',
-    9: '当前模式不支持',
-    10: '前方有障碍物',
-    11: '后方有障碍物',
-    12: '左方有障碍物',
-    13: '右方有障碍物',
-    14: '上方有障碍物',
-    15: '其他任务正在运行',
-    16: '机器人已经是目标状态'
-}
-
-def get_reason_description(reason: int) -> str:
-    """获取失败原因的中文描述"""
-    return REASON_DESCRIPTIONS.get(reason, f'未知原因({reason})')
-
 
 class PlayLightsClient(Node):
     def __init__(self):
@@ -131,15 +106,11 @@ class PlayLightsClient(Node):
                 self.get_logger().info("LedStripCommand request accepted.")
                 return True
                         
-            # 获取失败原因
-            reason = getattr(response.header.status, 'reason', 0)
-            if reason > 0:
-                reason_desc = get_reason_description(reason)
-                self.get_logger().warning(
-                    f"LedStripCommand rejected: reason={reason} - {reason_desc}"
-                )
-
-            self.get_logger().error("LedStripCommand request failed.")
+            self.get_logger().error(
+                f"LedStripCommand failed. "
+                f"code={code} status={status_value} "
+                f"msg={response.header.message}"
+            )
             return False
         except Exception as error:  # noqa: BLE001
             self.get_logger().error(f"Exception occurred: {error}")
@@ -201,15 +172,11 @@ class PlayLightsClient(Node):
                 self.get_logger().info("SetNeckLight request accepted.")
                 return True
             
-            # 获取失败原因
-            reason = getattr(response.header.status, 'reason', 0)
-            if reason > 0:
-                reason_desc = get_reason_description(reason)
-                self.get_logger().warning(
-                    f"SetNeckLight rejected: reason={reason} - {reason_desc}"
-                )
-
-            self.get_logger().error(f"SetNeckLight request failed with code {code}")
+            self.get_logger().error(
+                f"SetNeckLight failed. "
+                f"code={code} status={status} "
+                f"msg={response.header.message}"
+            )
             return False
         except Exception as error:  # noqa: BLE001
             self.get_logger().error(f"Exception in set_neck_light: {error}")
