@@ -354,12 +354,8 @@ def main(args=None) -> int:
             # Servo control mode
             node = CaptureJpegClient("dummy")  # Still need node for servo client
             
-            print("\n--- Servo Control ---")
-            print("  Position: 0° (quadruped) to 90° (biped)")
-            print("  Speed: 100-1000 steps/s (1 step = 0.225°)")
-            
-            position = read_int("  Enter position (0-90, default 45): ", 45)
-            speed = read_int("  Enter speed (100-1000, default 500): ", 500)
+            position = read_int("\nEnter servo position (0-90 degrees): ", 0, 90)
+            speed = read_int("Enter servo speed (100-1000): ", 100, 1000)
             
             return 0 if node.set_servo(position, speed) else 1
             

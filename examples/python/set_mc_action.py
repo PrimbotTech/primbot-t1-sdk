@@ -471,7 +471,7 @@ class SetMcActionClient(Node):
 
         while rclpy.ok() and time.monotonic() < deadline:
             _, action_desc, status = self.get_action_status()
-            if action_desc is not None and action_desc == expected_action_desc and status == McActionStatus.RUNNING:
+            if action_desc is not None and action_desc == expected_action_desc and status != McActionStatus.IDLE:
                 self.get_logger().info(f'Target action reached and is running: action_desc={expected_action_desc}')
                 return True
             time.sleep(poll_interval_sec)

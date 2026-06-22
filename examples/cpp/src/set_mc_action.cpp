@@ -354,7 +354,7 @@ public:
         std::this_thread::sleep_for(poll_interval);
         continue;
       }
-      if (info.status == aimdk_msgs::msg::McActionStatus::RUNNING &&
+      if (info.status != aimdk_msgs::msg::McActionStatus::IDLE &&
           info.action_desc == expected_action_desc) {
         RCLCPP_INFO(this->get_logger(), "Target action reached and is running: action_desc=%s",
                     expected_action_desc.c_str());
