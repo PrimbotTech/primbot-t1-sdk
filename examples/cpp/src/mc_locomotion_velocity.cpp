@@ -50,33 +50,6 @@
 constexpr double kServiceCallTimeoutSec = 2.0;
 constexpr int kMaxRetryCount = 3;
 
-// CommonState reason 字段对应的中文描述
-const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
-    {0, "无错误"},
-    {1, "开箱状态中"},
-    {2, "开机自检中"},
-    {3, "关机状态中"},
-    {4, "当前形态不支持"},
-    {5, "低电量限制"},
-    {6, "正在充电中"},
-    {7, "动作不在白名单"},
-    {8, "HDS故障"},
-    {9, "当前模式不支持"},
-    {10, "前方有障碍物"},
-    {11, "后方有障碍物"},
-    {12, "左方有障碍物"},
-    {13, "右方有障碍物"},
-    {14, "上方有障碍物"}
-};
-
-std::string GetReasonDescription(uint32_t reason) {
-  auto it = kReasonDescriptions.find(reason);
-  if (it != kReasonDescriptions.end()) {
-    return it->second;
-  }
-  return "未知原因(" + std::to_string(reason) + ")";
-}
-
 class DirectVelocityControl : public rclcpp::Node {
 public:
   DirectVelocityControl() : Node("direct_velocity_control") {
@@ -337,13 +310,12 @@ public:
       return true;
     }
     
-    // 获取失败原因
     if (res) {
-      uint32_t reason = res->response.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "SetMcAction rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
+      RCLCPP_ERROR(this->get_logger(),
+                   "SetMcAction failed. code=%ld status=%d msg=%s",
+                   res->response.header.code,
+                   res->response.status.value,
+                   res->response.message.c_str());
     }
     
     return false;

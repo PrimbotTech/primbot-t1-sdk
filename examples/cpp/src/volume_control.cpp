@@ -49,33 +49,6 @@ using namespace std::chrono_literals;
 namespace
 {
 
-// CommonState reason 字段对应的中文描述
-const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
-    {0, "无错误"},
-    {1, "开箱状态中"},
-    {2, "开机自检中"},
-    {3, "关机状态中"},
-    {4, "当前形态不支持"},
-    {5, "低电量限制"},
-    {6, "正在充电中"},
-    {7, "动作不在白名单"},
-    {8, "HDS故障"},
-    {9, "当前模式不支持"},
-    {10, "前方有障碍物"},
-    {11, "后方有障碍物"},
-    {12, "左方有障碍物"},
-    {13, "右方有障碍物"},
-    {14, "上方有障碍物"}
-};
-
-std::string GetReasonDescription(uint32_t reason) {
-  auto it = kReasonDescriptions.find(reason);
-  if (it != kReasonDescriptions.end()) {
-    return it->second;
-  }
-  return "未知原因(" + std::to_string(reason) + ")";
-}
-
 constexpr char kTtsText[] =
   "大家好，我是启元机器人。现在为你演示音频控制示例。"
   "接下来，我会先持续播报一段介绍内容，在播报过程中，系统会依次执行设置音量、查询音量、设置静音和查询静音等操作。"
@@ -331,11 +304,12 @@ class VolumeControlClient : public rclcpp::Node
                 static_cast<int>(response->tts_resp.is_success),
                 response->tts_resp.error_message.c_str());
     
-    // 获取失败原因
-    uint32_t reason = response->header.status.reason;
-    if (reason > 0) {
-      std::string reason_desc = GetReasonDescription(reason);
-      RCLCPP_WARN(this->get_logger(), "PlayTts rejected: reason=%u - %s", reason, reason_desc.c_str());
+    if (!response->tts_resp.is_success) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "PlayTts failed. code=%ld status=%d msg=%s",
+                   response->header.header.code,
+                   response->header.status.value,
+                   response->header.header.message.c_str());
     }
 
     return response->tts_resp.is_success;
@@ -358,13 +332,14 @@ class VolumeControlClient : public rclcpp::Node
                 set_response->response.status.value,
                 set_response->audio_volume);
     
-    // 获取失败原因
-    {
-      uint32_t reason = set_response->response.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "SetVolume rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
+    if (set_response->response.header.code != 0 || 
+        set_response->response.status.value != aimdk_msgs::msg::CommonState::SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "SetVolume failed. code=%ld status=%d msg=%s",
+                   set_response->response.header.code,
+                   set_response->response.status.value,
+                   set_response->response.message.c_str());
+      return false;
     }
 
     auto get_response = call_service<aimdk_msgs::srv::GetVolume>(
@@ -377,13 +352,14 @@ class VolumeControlClient : public rclcpp::Node
                 get_response->response.status.value,
                 get_response->audio_volume);
     
-    // 获取失败原因
-    {
-      uint32_t reason = get_response->response.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "GetVolume rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
+    if (get_response->response.header.code != 0 || 
+        get_response->response.status.value != aimdk_msgs::msg::CommonState::SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "GetVolume failed. code=%ld status=%d msg=%s",
+                   get_response->response.header.code,
+                   get_response->response.status.value,
+                   get_response->response.message.c_str());
+      return false;
     }
 
     if (get_response->audio_volume != target_volume) {
@@ -424,13 +400,14 @@ class VolumeControlClient : public rclcpp::Node
                 set_response->response.status.value,
                 static_cast<int>(set_response->is_mute));
     
-    // 获取失败原因
-    {
-      uint32_t reason = set_response->response.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "SetMute rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
+    if (set_response->response.header.code != 0 || 
+        set_response->response.status.value != aimdk_msgs::msg::CommonState::SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "SetMute failed. code=%ld status=%d msg=%s",
+                   set_response->response.header.code,
+                   set_response->response.status.value,
+                   set_response->response.message.c_str());
+      return false;
     }
 
     auto get_request                  = std::make_shared<aimdk_msgs::srv::GetMute::Request>();
@@ -446,13 +423,14 @@ class VolumeControlClient : public rclcpp::Node
                 get_response->response.status.value,
                 static_cast<int>(get_response->is_mute));
     
-    // 获取失败原因
-    {
-      uint32_t reason = get_response->response.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "GetMute rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
+    if (get_response->response.header.code != 0 || 
+        get_response->response.status.value != aimdk_msgs::msg::CommonState::SUCCESS) {
+      RCLCPP_ERROR(this->get_logger(),
+                   "GetMute failed. code=%ld status=%d msg=%s",
+                   get_response->response.header.code,
+                   get_response->response.status.value,
+                   get_response->response.message.c_str());
+      return false;
     }
 
     if (get_response->is_mute != target_mute) {

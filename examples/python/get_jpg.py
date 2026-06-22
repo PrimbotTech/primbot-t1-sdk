@@ -53,30 +53,8 @@ import rclpy.logging
 from rclpy.node import Node
 
 from aimdk_msgs.msg import CommonRequest, CommonState
-
-# CommonState reason 字段对应的中文描述
-REASON_DESCRIPTIONS = {
-    0: '无错误',
-    1: '开箱状态中',
-    2: '开机自检中',
-    3: '关机状态中',
-    4: '当前形态不支持',
-    5: '低电量限制',
-    6: '正在充电中',
-    7: '动作不在白名单',
-    8: 'HDS故障',
-    9: '当前模式不支持',
-    10: '前方有障碍物',
-    11: '后方有障碍物',
-    12: '左方有障碍物',
-    13: '右方有障碍物',
-    14: '上方有障碍物'
-}
-
-def get_reason_description(reason: int) -> str:
-    """获取失败原因的中文描述"""
-    return REASON_DESCRIPTIONS.get(reason, f'未知原因({reason})')
 from aimdk_msgs.srv import CaptureJpegImage
+from aimdk_msgs.srv import SetServo
 
 
 
@@ -85,6 +63,7 @@ DEFAULT_OUTPUT_FILE = "/tmp/camera_capture.jpg"
 DEFAULT_REQUEST_TIMEOUT_MS = 5000
 SERVICE_WAIT_SECONDS = 2.0
 MIN_CALL_TIMEOUT_MS = 6000
+SET_SERVO_SERVICE_NAME = "/aimdk_5Fmsgs/srv/SetServo"
 
 
 def prepare_output_path(output_file: str) -> Path:
@@ -125,6 +104,14 @@ def get_camera_id_from_user() -> str:
     return camera_id
 
 
+def read_int(prompt: str, default: int) -> int:
+    """Read integer from user input with default value."""
+    text = input(prompt).strip()
+    if not text:
+        return default
+    return int(text)
+
+
 class CaptureJpegClient(Node):
     def __init__(self, camera_id: str) -> None:
         super().__init__("get_jpg")
@@ -146,6 +133,7 @@ class CaptureJpegClient(Node):
 
         self.output_path = prepare_output_path(self.output_file)
         self.client = self.create_client(CaptureJpegImage, self.service_name)
+        self.servo_client = self.create_client(SetServo, SET_SERVO_SERVICE_NAME)
 
         # 打印客户端创建成功日志
         self.get_logger().info(
@@ -154,6 +142,9 @@ class CaptureJpegClient(Node):
             f"camera_id={self.camera_id} "
             f"timeout_ms={self.timeout_ms} "
             f"output_file={self.output_path}"
+        )
+        self.get_logger().info(
+            f"SetServo client created. service={SET_SERVO_SERVICE_NAME}"
         )
 
     def wait_for_service(self) -> bool:
@@ -207,16 +198,8 @@ class CaptureJpegClient(Node):
         code = response.response.header.code
         status = response.response.status.value
         if code != 0 and status != CommonState.SUCCESS:
-            # 获取失败原因
-            reason = getattr(response.response.status, 'reason', 0)
-            if reason > 0:
-                reason_desc = get_reason_description(reason)
-                self.get_logger().warning(
-                    f"CaptureJpegImage failure reason: {reason} - {reason_desc}"
-                )
-            
             self.get_logger().error(
-                "CaptureJpegImage failed. "
+                f"CaptureJpegImage failed. "
                 f"code={code} status={status} msg={response.response.message}"
             )
             return False
@@ -250,16 +233,102 @@ class CaptureJpegClient(Node):
         )
         return True
 
+    def set_servo(self, position: int, speed: int) -> bool:
+        """Set servo position and speed.
+        
+        Args:
+            position: Servo position in degrees (0-90)
+                     0 = quadruped mode, 90 = biped mode
+            speed: Movement speed (100-1000 steps/s)
+                  1 step = 0.225 degrees
+        """
+        # Validate parameters
+        if position < 0 or position > 90:
+            self.get_logger().error(f"Invalid position: {position}. Must be 0-90 degrees.")
+            return False
+        
+        if speed < 100 or speed > 1000:
+            self.get_logger().error(f"Invalid speed: {speed}. Must be 100-1000.")
+            return False
+        
+        # Wait for service
+        while not self.servo_client.wait_for_service(timeout_sec=SERVICE_WAIT_SECONDS):
+            if not rclpy.ok():
+                return False
+            self.get_logger().info(f"Waiting for service: {SET_SERVO_SERVICE_NAME}")
+        
+        # Create request
+        request = SetServo.Request()
+        request.request = CommonRequest()
+        request.request.header.stamp = self.get_clock().now().to_msg()
+        request.position = position
+        request.speed = speed
+        
+        self.get_logger().info(
+            f"Sending SetServo request: position={position}°, speed={speed}"
+        )
+        
+        # Call service
+        future = self.servo_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+        
+        if not future.done():
+            self.get_logger().error("SetServo timed out.")
+            return False
+        
+        response = future.result()
+        if response is None:
+            self.get_logger().error("SetServo returned an empty response.")
+            return False
+        
+        # Check response
+        code = response.header.header.code
+        if code != 0:
+            self.get_logger().error(
+                f"SetServo failed. code={code}"
+            )
+            return False
+        
+        self.get_logger().info(
+            f"SetServo success. position={position}°, speed={speed}"
+        )
+        return True
+
 
 def main(args=None) -> int:
     rclpy.init(args=args)
     node = None
 
     try:
-        camera_id = get_camera_id_from_user()
+        # Print menu
+        print("\n" + "="*60)
+        print("  Camera & Servo Control Menu")
+        print("="*60)
+        print("\nSelect control mode:")
+        print("  1. Capture JPEG Image")
+        print("  2. Set Servo Position")
+        print("="*60)
         
-        node = CaptureJpegClient(camera_id)
-        return 0 if node.capture_once() else 1
+        choice = read_int("\nEnter choice (1-2, default 1): ", 1)
+        
+        if choice == 1:
+            # Camera capture mode
+            camera_id = get_camera_id_from_user()
+            node = CaptureJpegClient(camera_id)
+            return 0 if node.capture_once() else 1
+            
+        elif choice == 2:
+            # Servo control mode
+            node = CaptureJpegClient("dummy")  # Still need node for servo client
+            
+            position = read_int("\nEnter servo position (0-90 degrees): ", 0, 90)
+            speed = read_int("Enter servo speed (100-1000): ", 100, 1000)
+            
+            return 0 if node.set_servo(position, speed) else 1
+            
+        else:
+            print("\n✗ Invalid choice")
+            return 1
     except Exception as error:  # noqa: BLE001
         rclpy.logging.get_logger("get_jpg").error(
             f"Program exited with exception: {error}"

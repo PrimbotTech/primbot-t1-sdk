@@ -41,3 +41,5 @@ uint32 REASON_OBSTACLE_BACK    = 11  # 后方有障碍物
 uint32 REASON_OBSTACLE_LEFT    = 12  # 左方有障碍物
 uint32 REASON_OBSTACLE_RIGHT   = 13  # 右方有障碍物
 uint32 REASON_OBSTACLE_UP      = 14  # 上方有障碍物
+uint32 REASON_TASK_RUNNING     = 15  # 其他任务正在运行
+uint32 REASON_TARGET_STATE     = 16  # 机器人已经是目标状态

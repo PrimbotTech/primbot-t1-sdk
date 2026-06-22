@@ -1,0 +1,13 @@
+# 舵机同步控制服务
+CommonRequest request
+
+# 位置,范围为0-90度，0度为四足形态的位置，90度为双足形态的位置
+uint8 position
+# 速度，范围为100-1000。该值为每秒运动的步数，1步为0.225度。
+uint16 speed
+
+---
+
+
+# 响应头
+CommonResponse header

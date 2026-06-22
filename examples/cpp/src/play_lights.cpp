@@ -1,6 +1,7 @@
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/srv/led_strip_command.hpp"
 #include "aimdk_msgs/srv/set_neck_light.hpp"
+#include "aimdk_msgs/msg/neck_light_state.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <chrono>
@@ -16,33 +17,6 @@
 
 constexpr int kMaxRetryCount = 3;
 constexpr std::chrono::milliseconds kServiceCallTimeout(2000);
-
-// CommonState reason 字段对应的中文描述
-const std::unordered_map<uint32_t, std::string> kReasonDescriptions = {
-    {0, "无错误"},
-    {1, "开箱状态中"},
-    {2, "开机自检中"},
-    {3, "关机状态中"},
-    {4, "当前形态不支持"},
-    {5, "低电量限制"},
-    {6, "正在充电中"},
-    {7, "动作不在白名单"},
-    {8, "HDS故障"},
-    {9, "当前模式不支持"},
-    {10, "前方有障碍物"},
-    {11, "后方有障碍物"},
-    {12, "左方有障碍物"},
-    {13, "右方有障碍物"},
-    {14, "上方有障碍物"}
-};
-
-std::string GetReasonDescription(uint32_t reason) {
-  auto it = kReasonDescriptions.find(reason);
-  if (it != kReasonDescriptions.end()) {
-    return it->second;
-  }
-  return "未知原因(" + std::to_string(reason) + ")";
-}
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
 
@@ -154,14 +128,10 @@ public:
         return true;
       }
             
-      // 获取失败原因
-      uint32_t reason = response->header.status.reason;
-      if (reason > 0) {
-        std::string reason_desc = GetReasonDescription(reason);
-        RCLCPP_WARN(this->get_logger(), "LedStripCommand rejected: reason=%u - %s", reason, reason_desc.c_str());
-      }
-
-      RCLCPP_ERROR(this->get_logger(), "LedStripCommand request failed.");
+      RCLCPP_ERROR(this->get_logger(),
+                   "LedStripCommand failed. code=%ld status=%d msg=%s",
+                   code, static_cast<int>(status_value),
+                   response->header.message.c_str());
       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
@@ -225,13 +195,11 @@ public:
         return true;
       }
 
-      uint32_t reason = response->header.status.reason;
-      if (reason > 0) {
-        RCLCPP_WARN(this->get_logger(), "SetNeckLight rejected: reason=%u - %s",
-                    reason, GetReasonDescription(reason).c_str());
-      }
-
-      RCLCPP_ERROR(this->get_logger(), "SetNeckLight failed: code=%ld", code);
+      RCLCPP_ERROR(this->get_logger(),
+                   "SetNeckLight failed. code=%ld status=%d msg=%s",
+                   code,
+                   response->header.status.value,
+                   response->header.header.message.c_str());
       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception in set_neck_light: %s", e.what());
@@ -261,6 +229,33 @@ private:
 private:
   rclcpp::Client<aimdk_msgs::srv::LedStripCommand>::SharedPtr led_client_;
   rclcpp::Client<aimdk_msgs::srv::SetNeckLight>::SharedPtr neck_client_;
+};
+
+class GetNeckLightStateSubscriber: public rclcpp::Node{
+public:
+   GetNeckLightStateSubscriber(): Node("get_neck_light_state_subscriber") {
+    current_state_ = nullptr;
+    subscription_ = this->create_subscription<aimdk_msgs::msg::NeckLightState>(
+        "/aima/hal/neck_light/state", 10,
+        std::bind(&GetNeckLightStateSubscriber::state_callback, this, std::placeholders::_1));
+    RCLCPP_INFO(this->get_logger(), "Neck Light State Subscriber node created.");
+  }
+
+  aimdk_msgs::msg::NeckLightState::SharedPtr current_state_ = nullptr;
+
+private:
+  void state_callback(const aimdk_msgs::msg::NeckLightState::SharedPtr msg) {
+    current_state_ = msg;
+    if (msg->enable) {
+      RCLCPP_INFO(this->get_logger(), "State updated: enable=%d, brightness=%d", 
+                  msg->enable, msg->brightness);
+    }
+    if (!msg->enable) {
+      RCLCPP_INFO(this->get_logger(), "State updated: enable=%d", msg->enable);
+    }
+  }
+
+  rclcpp::Subscription<aimdk_msgs::msg::NeckLightState>::SharedPtr subscription_;
 };
 
 int main(int argc, char *argv[]) {
@@ -341,6 +336,13 @@ int main(int argc, char *argv[]) {
       }
     } else if (choice == 2) {
       // Neck light control
+      // Create state subscriber to monitor light state
+      auto state_subscriber = std::make_shared<GetNeckLightStateSubscriber>();
+      
+      // Spin briefly to receive initial state
+      rclcpp::spin_some(state_subscriber);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      
       std::cout << "\n--- Neck Light Control ---" << std::endl;
       
       bool enable = true;
@@ -381,6 +383,30 @@ int main(int argc, char *argv[]) {
           std::cout << "\n✓ Neck light enabled, brightness " << brightness << "%" << std::endl;
         } else {
           std::cout << "\n✓ Neck light disabled" << std::endl;
+        }
+        
+        // Wait for state update and display
+        std::cout << "\nWaiting for state update..." << std::endl;
+        bool state_received = false;
+        for (int i = 0; i < 5; ++i) {
+          rclcpp::spin_some(state_subscriber);
+          std::this_thread::sleep_for(std::chrono::milliseconds(500));
+          
+          if (state_subscriber->current_state_) {
+            auto state = state_subscriber->current_state_;
+            if (state->enable) {
+              std::cout << "Current state: enable=" << state->enable 
+                       << ", brightness=" << static_cast<int>(state->brightness) << std::endl;
+            } else {
+              std::cout << "Current state: enable=" << state->enable << std::endl;
+            }
+            state_received = true;
+            break;
+          }
+        }
+        
+        if (!state_received) {
+          std::cout << "No state update received (topic may not be published)" << std::endl;
         }
       } else {
         std::cout << "\n✗ Neck light control request failed" << std::endl;

@@ -23,31 +23,9 @@ import rclpy.logging
 from rclpy.node import Node
 
 from aimdk_msgs.msg import CommonRequest
+from aimdk_msgs.msg import NeckLightState
 from aimdk_msgs.srv import LedStripCommand
 from aimdk_msgs.srv import SetNeckLight
-
-# CommonState reason 字段对应的中文描述
-REASON_DESCRIPTIONS = {
-    0: '无错误',
-    1: '开箱状态中',
-    2: '开机自检中',
-    3: '关机状态中',
-    4: '当前形态不支持',
-    5: '低电量限制',
-    6: '正在充电中',
-    7: '动作不在白名单',
-    8: 'HDS故障',
-    9: '当前模式不支持',
-    10: '前方有障碍物',
-    11: '后方有障碍物',
-    12: '左方有障碍物',
-    13: '右方有障碍物',
-    14: '上方有障碍物'
-}
-
-def get_reason_description(reason: int) -> str:
-    """获取失败原因的中文描述"""
-    return REASON_DESCRIPTIONS.get(reason, f'未知原因({reason})')
 
 
 class PlayLightsClient(Node):
@@ -128,15 +106,11 @@ class PlayLightsClient(Node):
                 self.get_logger().info("LedStripCommand request accepted.")
                 return True
                         
-            # 获取失败原因
-            reason = getattr(response.header.status, 'reason', 0)
-            if reason > 0:
-                reason_desc = get_reason_description(reason)
-                self.get_logger().warning(
-                    f"LedStripCommand rejected: reason={reason} - {reason_desc}"
-                )
-
-            self.get_logger().error("LedStripCommand request failed.")
+            self.get_logger().error(
+                f"LedStripCommand failed. "
+                f"code={code} status={status_value} "
+                f"msg={response.header.message}"
+            )
             return False
         except Exception as error:  # noqa: BLE001
             self.get_logger().error(f"Exception occurred: {error}")
@@ -198,15 +172,11 @@ class PlayLightsClient(Node):
                 self.get_logger().info("SetNeckLight request accepted.")
                 return True
             
-            # 获取失败原因
-            reason = getattr(response.header.status, 'reason', 0)
-            if reason > 0:
-                reason_desc = get_reason_description(reason)
-                self.get_logger().warning(
-                    f"SetNeckLight rejected: reason={reason} - {reason_desc}"
-                )
-
-            self.get_logger().error(f"SetNeckLight request failed with code {code}")
+            self.get_logger().error(
+                f"SetNeckLight failed. "
+                f"code={code} status={status} "
+                f"msg={response.header.message}"
+            )
             return False
         except Exception as error:  # noqa: BLE001
             self.get_logger().error(f"Exception in set_neck_light: {error}")
@@ -219,10 +189,28 @@ def read_int(prompt: str, default: int) -> int:
         return default
     return int(text)
 
+class GetNeckLightStateSubscriber(Node):
+    def __init__(self):
+        super().__init__("get_neck_light_state_subscriber")
+        self.current_state = None  # Store the latest state
+        self.subscription = self.create_subscription(NeckLightState, "/aima/hal/neck_light/state", self.state_callback, 10)
+        self.get_logger().info("Neck Light State Subscriber node created.")
+    
+    def state_callback(self, msg):
+        self.current_state = msg  # Save the state
+        if msg.enable:
+            self.get_logger().info(
+                f'State updated: enable={msg.enable}, brightness={msg.brightness}'
+            )
+        if not msg.enable:
+            self.get_logger().info(
+                f'State updated: enable={msg.enable}'
+            )
 
 def main(args=None):
     rclpy.init(args=args)
     node = None
+    state_subscriber = None
     try:
         # Print menu
         print("\n" + "="*60)
@@ -262,6 +250,11 @@ def main(args=None):
                 
         elif choice == 2:
             # Neck light control
+            # Create state subscriber to monitor light state
+            state_subscriber = GetNeckLightStateSubscriber()
+            # Spin briefly to receive initial state
+            rclpy.spin_once(state_subscriber, timeout_sec=1.0)
+            
             print("\n--- Neck Light Control ---")
             enable_input = input("  Enable (true/false, default true): ").strip().lower()
             
@@ -298,6 +291,20 @@ def main(args=None):
                     print(f"\n✓ Neck light enabled, brightness {brightness}%")
                 else:
                     print("\n✓ Neck light disabled")
+                
+                # Wait for state update and display
+                print("\nWaiting for state update...")
+                for _ in range(5):  # Try 5 times
+                    rclpy.spin_once(state_subscriber, timeout_sec=0.5)
+                    if state_subscriber.current_state:
+                        state = state_subscriber.current_state
+                        if state.enable:
+                            print(f"Current state: enable={state.enable}, brightness={state.brightness}")
+                        else:
+                            print(f"Current state: enable={state.enable}")
+                        break
+                else:
+                    print("No state update received (topic may not be published)")
             else:
                 print("\n✗ Neck light control request failed")
         else:
@@ -305,6 +312,8 @@ def main(args=None):
         
         if node is not None:
             node.destroy_node()
+        if state_subscriber is not None:
+            state_subscriber.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
         return 0
@@ -314,6 +323,8 @@ def main(args=None):
         )
         if node is not None:
             node.destroy_node()
+        if state_subscriber is not None:
+            state_subscriber.destroy_node()
         if rclpy.ok():
             rclpy.shutdown()
         return 1

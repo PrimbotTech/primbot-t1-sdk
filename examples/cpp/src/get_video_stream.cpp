@@ -26,6 +26,10 @@
 #include <opencv2/core/utils/logger.hpp>
 #include <opencv2/videoio.hpp>
 
+#include "aimdk_msgs/msg/common_request.hpp"
+#include "aimdk_msgs/srv/set_servo.hpp"
+#include "rclcpp/rclcpp.hpp"
+
 #include <atomic>
 #include <chrono>
 #include <csignal>
@@ -48,8 +52,79 @@ constexpr double kDefaultFallbackFps = 25.0;
 constexpr int kOpenTimeoutMs = 5000;
 constexpr int kReadTimeoutMs = 5000;
 constexpr char kMp4Codec[] = "mp4v";
+constexpr char kSetServoServiceName[] = "/aimdk_5Fmsgs/srv/SetServo";
+constexpr int kServiceWaitSeconds = 2;
 
 std::atomic<bool> g_stop_requested{false};
+std::shared_ptr<rclcpp::Node> g_node = nullptr;
+
+std::string get_int_from_user(const std::string &prompt, int min_val, int max_val) {
+  std::string input;
+  while (true) {
+    std::cout << prompt;
+    std::getline(std::cin, input);
+    
+    try {
+      int value = std::stoi(input);
+      if (value >= min_val && value <= max_val) {
+        return std::to_string(value);
+      }
+      std::cout << "Error: Value must be between " << min_val << " and " << max_val << "." << std::endl;
+    } catch (const std::exception &) {
+      std::cout << "Error: Invalid input. Please enter a number." << std::endl;
+    }
+  }
+}
+
+bool set_servo(int position, int speed) {
+  if (position < 0 || position > 90) {
+    std::cerr << "Invalid position: " << position << ". Must be 0-90 degrees." << std::endl;
+    return false;
+  }
+
+  if (speed < 100 || speed > 1000) {
+    std::cerr << "Invalid speed: " << speed << ". Must be 100-1000." << std::endl;
+    return false;
+  }
+
+  auto node = std::make_shared<rclcpp::Node>("servo_client");
+  auto client = node->create_client<aimdk_msgs::srv::SetServo>(kSetServoServiceName);
+
+  if (!client->wait_for_service(std::chrono::seconds(kServiceWaitSeconds))) {
+    std::cerr << "SetServo service not available." << std::endl;
+    return false;
+  }
+
+  auto request = std::make_shared<aimdk_msgs::srv::SetServo::Request>();
+  request->request = aimdk_msgs::msg::CommonRequest();
+  request->request.header.stamp = node->now();
+  request->position = position;
+  request->speed = speed;
+
+  auto future = client->async_send_request(request);
+  const auto retcode = rclcpp::spin_until_future_complete(
+      node, future, std::chrono::seconds(5));
+
+  if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
+    std::cerr << "SetServo call timed out." << std::endl;
+    return false;
+  }
+
+  const auto response = future.get();
+  if (!response) {
+    std::cerr << "SetServo returned empty response." << std::endl;
+    return false;
+  }
+
+  const auto code = response->header.header.code;
+  if (code != 0) {
+    std::cerr << "SetServo failed: code=" << code << std::endl;
+    return false;
+  }
+
+  std::cout << "SetServo success. position=" << position << " speed=" << speed << std::endl;
+  return true;
+}
 
 struct Options {
   std::string output_file{kDefaultOutputFile};
@@ -545,12 +620,41 @@ private:
 
 int main(int argc, char **argv) {
   try {
-    std::signal(SIGINT, signal_handler);
-    std::signal(SIGTERM, signal_handler);
+    // Print menu
+    std::cout << "\n" << std::string(60, '=') << std::endl;
+    std::cout << "  Camera & Servo Control Menu" << std::endl;
+    std::cout << std::string(60, '=') << std::endl;
+    std::cout << "\nSelect control mode:" << std::endl;
+    std::cout << "  1. Capture Video Stream" << std::endl;
+    std::cout << "  2. Set Servo Position" << std::endl;
+    std::cout << "\nEnter your choice (1 or 2): ";
+    
+    std::string choice;
+    std::getline(std::cin, choice);
+    
+    if (choice == "1") {
+      // Video stream capture mode
+      std::signal(SIGINT, signal_handler);
+      std::signal(SIGTERM, signal_handler);
 
-    const Options options = parse_args(argc, argv);
-    RtspVideoStreamReader reader(options);
-    return reader.run();
+      const Options options = parse_args(argc, argv);
+      RtspVideoStreamReader reader(options);
+      return reader.run();
+    } else if (choice == "2") {
+      // Servo control mode
+      rclcpp::init(argc, argv);
+      
+      int position = std::stoi(get_int_from_user("\nEnter servo position (0-90 degrees): ", 0, 90));
+      int speed = std::stoi(get_int_from_user("Enter servo speed (100-1000): ", 100, 1000));
+      
+      const bool ok = set_servo(position, speed);
+      
+      rclcpp::shutdown();
+      return ok ? 0 : 1;
+    } else {
+      std::cout << "Invalid choice. Exiting..." << std::endl;
+      return 1;
+    }
   } catch (const std::exception &error) {
     std::cerr << "Error: " << error.what() << std::endl;
     return 1;

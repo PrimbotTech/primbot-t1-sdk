@@ -41,6 +41,13 @@ import sys
 import time
 from typing import Any
 
+import rclpy
+from rclpy.node import Node
+from aimdk_msgs.msg import CommonRequest
+from aimdk_msgs.srv import SetServo
+
+SET_SERVO_SERVICE_NAME = "/aimdk_5Fmsgs/srv/SetServo"
+
 RTSP_URL = "rtsp://{ip}:2554/live_{camera_id}"
 DEFAULT_OUTPUT_FILE = "/tmp/video_capture.mp4"
 DEFAULT_CAPTURE_SECONDS = 5.0
@@ -416,13 +423,97 @@ class RtspVideoStreamReader:
         return 0
 
 
+class ServoClient(Node):
+    def __init__(self):
+        super().__init__("servo_client")
+        self.servo_client = self.create_client(SetServo, SET_SERVO_SERVICE_NAME)
+
+    def set_servo(self, position: int, speed: int) -> bool:
+        if position < 0 or position > 90:
+            self.get_logger().error(f"Invalid position: {position}. Must be 0-90 degrees.")
+            return False
+
+        if speed < 100 or speed > 1000:
+            self.get_logger().error(f"Invalid speed: {speed}. Must be 100-1000.")
+            return False
+
+        request = SetServo.Request()
+        request.request = CommonRequest()
+        request.request.header.stamp = self.get_clock().now().to_msg()
+        request.position = position
+        request.speed = speed
+
+        future = self.servo_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=5.0)
+
+        response = future.result()
+        if response is None:
+            self.get_logger().error("SetServo service call failed.")
+            return False
+
+        code = response.header.header.code
+        if code != 0:
+            self.get_logger().error(f"SetServo failed: code={code}")
+            return False
+
+        self.get_logger().info(f"SetServo success. position={position} speed={speed}")
+        return True
+
+
+def read_int(prompt: str, min_val: int, max_val: int) -> int:
+    while True:
+        try:
+            value = int(input(prompt))
+            if min_val <= value <= max_val:
+                return value
+            print(f"Error: Value must be between {min_val} and {max_val}.")
+        except ValueError:
+            print("Error: Invalid input. Please enter a number.")
+
+
 def main() -> int:
+    print("\n" + "="*60)
+    print("  Camera & Servo Control Menu")
+    print("="*60)
+    print("\nSelect control mode:")
+    print("  1. Capture Video Stream")
+    print("  2. Set Servo Position")
+    print("\nEnter your choice (1 or 2): ", end="")
+    
     try:
-        args = parse_args()
-        reader = RtspVideoStreamReader(args)
-        return reader.run()
-    except Exception as error:  # noqa: BLE001
-        print(f"Error: {error}", file=sys.stderr)
+        choice = input().strip()
+    except EOFError:
+        print("\nNo input provided. Exiting...")
+        return 1
+    
+    if choice == "1":
+        # Video stream capture mode
+        try:
+            args = parse_args()
+            reader = RtspVideoStreamReader(args)
+            return reader.run()
+        except Exception as error:  # noqa: BLE001
+            print(f"Error: {error}", file=sys.stderr)
+            return 1
+    elif choice == "2":
+        # Servo control mode
+        try:
+            rclpy.init()
+            node = ServoClient()
+            
+            position = read_int("\nEnter servo position (0-90 degrees): ", 0, 90)
+            speed = read_int("Enter servo speed (100-1000): ", 100, 1000)
+            
+            ok = node.set_servo(position, speed)
+            
+            node.destroy_node()
+            rclpy.shutdown()
+            return 0 if ok else 1
+        except Exception as error:  # noqa: BLE001
+            print(f"Error: {error}", file=sys.stderr)
+            return 1
+    else:
+        print("Invalid choice. Exiting...")
         return 1
 
 

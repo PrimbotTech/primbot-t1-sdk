@@ -26,6 +26,7 @@ private:
         << "  sequence: " << msg->header.sequence << "\n"
         << "  stamp:    " << rclcpp::Time(msg->header.stamp).seconds() << " s\n"
         << "  meas:     " << rclcpp::Time(msg->header.meas_stamp).seconds() << " s\n"
+        << "  sensor:   " << static_cast<int>(msg->sensor_id) << "\n"
         << "  event:    " << static_cast<int>(msg->event_type);
 
     // Throttle logs to avoid flooding the console.
