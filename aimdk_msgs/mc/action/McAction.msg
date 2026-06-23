@@ -11,6 +11,9 @@ int32 PASSIVE_DEFAULT = 1
 # 阻尼模式
 int32 DAMPING_DEFAULT = 2
 
+# 四足躺下
+int32 QUAD_LIE_DOWN = 3
+
 # ============================================================================
 # 形态切换
 # ============================================================================
@@ -82,6 +85,9 @@ int32 QUADRUPED_LOCOMOTION_PRIDE = 113
 # 四足愉快
 int32 QUADRUPED_LOCOMOTION_PLEASURE = 114
 
+# 四足准备站立
+int32 QUADRUPED_READY_STAND_DEFAULT = 115
+
 # 四足跳跃
 int32 QUADRUPED_LOCOMOTION_JUMP = 116
 
@@ -93,6 +99,12 @@ int32 QUADRUPED_PUSH_UP = 118
 
 # 四足模仿动作
 int32 QUADRUPED_MIMIC = 119
+
+# 四足蜷缩
+int32 QUADRUPED_CROUCH_DEFAULT = 120
+
+# 四足踏步模式
+int32 QUADRUPED_LOCOMOTION_STEP = 121
 
 # ============================================================================
 # 两足相关动作 (200-299)
@@ -122,11 +134,23 @@ int32 BIPED_LOCOMOTION_MOONWALK = 206
 # 双足奔跑模式
 int32 BIPED_LOCOMOTION_RUN = 207
 
+# 双足模仿动作
+int32 BIPED_MIMIC = 208
+
+# 双足羽生结弦
+int32 BIPED_YUZURU = 209
+
+# 双足劈叉
+int32 BIPED_SPLIT = 210
+
 # 双足全身控制模式
 int32 BIPED_LOCOMOTION_WBC = 300
 
 # 双足动画控制模式
 int32 BIPED_LOCOMOTION_ANIMATION = 301
+
+# 双足控制上肢录制模式
+int32 BIPED_RECORD_UPPER = 302
 
 # 双足转圈
 int32 BIPED_MIMIC_ROTATE_DANCE = 400 

@@ -26,7 +26,8 @@ uint8 LED_WHITE_ON                 = 17   # 白色常亮r=g=b=150
 uint8 LED_DISPLAY_25_LOW_TRANSFORM = 18   # 黄色流水
 uint8 LED_DISPLAY_15_LOW_TRANSFORM = 19   # 橙红流水
 uint8 LED_WHITE_BREATH             = 20   # 白色呼吸
-uint8 LED_CUSTOM                   = 255  # 自定义模式
+uint8 LED_CUSTOM_BREATH            = 254  # 呼吸灯效自定义模式
+uint8 LED_CUSTOM_BLINK             = 255  # 闪烁灯效自定义模式
 ##
 
 # 红色分量，自定义模式下生效
@@ -38,10 +39,13 @@ uint8 g
 # 蓝色分量，自定义模式下生效
 uint8 b
 
-# 周期，自定义模式下生效。单位ms，0表示常亮，非0值表示点亮或者熄灭的保持时间
+# 周期，自定义模式下生效，单位ms。
+# 呼吸灯效自定义模式下，0表示常亮，非0值表示呼吸灯效从最亮到熄灭的时间。
+# 闪烁灯效自定义模式下，0表示常亮，非0值表示点亮或者熄灭的保持时间。
 uint16 period
 ---
 
 
 # 响应头
 CommonResponse header
+

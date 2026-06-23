@@ -190,12 +190,22 @@ public:
         return false;
       }
 
-      auto response = future.get();
-      if (response->response.header.code == 0) {
-        RCLCPP_INFO(this->get_logger(), "Motion request accepted. Task ID: %lu", response->response.task_id);
-        return true;
-      }
-      return false;
+       auto response = future.get();
+       if (response && response->response.header.code == 0) {
+         RCLCPP_INFO(this->get_logger(), "Motion request accepted. Task ID: %lu",
+                     response->response.task_id);
+         return true;
+       }
+       
+       if (response) {
+         RCLCPP_ERROR(this->get_logger(),
+                      "SetMcPresetMotion failed. code=%ld status=%d reason=%u",
+                      response->response.header.code,
+                      response->response.state.value,
+                      response->response.state.reason);
+       }
+       
+       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
       return false;
@@ -250,17 +260,7 @@ private:
     if (!future.valid()) return false;
 
     auto res = future.get();
-    if (res->response.status.value == aimdk_msgs::msg::CommonState::SUCCESS) {
-      return true;
-    }
-    
-    RCLCPP_ERROR(this->get_logger(),
-                 "SetMcAction failed. code=%ld status=%d msg=%s",
-                 res->response.header.code,
-                 res->response.status.value,
-                 res->response.message.c_str());
-    
-    return false;
+    return res && res->response.status.value == aimdk_msgs::msg::CommonState::SUCCESS;
   }
 
   bool wait_for_action(const std::string &target,
