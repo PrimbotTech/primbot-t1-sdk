@@ -11,7 +11,7 @@ int32 RIGHT_ARM_WAVE = 1001
 # 右手握手
 int32 RIGHT_ARM_HANDSHAKE = 1002
 
-# 右手握手1.5m上对象
+# 左手握手1.5m上对象
 int32 RIGHT_ARM_HANDSHAKE_FOR_1D5METER = 1003
 
 # 左手挥手

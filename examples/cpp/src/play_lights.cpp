@@ -195,11 +195,11 @@ public:
         return true;
       }
 
-      RCLCPP_ERROR(this->get_logger(),
-                   "SetNeckLight failed. code=%ld status=%d msg=%s",
-                   code,
-                   response->header.status.value,
-                   response->header.header.message.c_str());
+       RCLCPP_ERROR(this->get_logger(),
+                    "SetNeckLight failed. code=%ld status=%d msg=%s",
+                    code,
+                    response->header.status.value,
+                    response->header.message.c_str());
       return false;
     } catch (const std::exception &e) {
       RCLCPP_ERROR(this->get_logger(), "Exception in set_neck_light: %s", e.what());
@@ -305,8 +305,8 @@ int main(int argc, char *argv[]) {
         led_strip_mode = static_cast<uint8_t>(mode_input);
       }
 
-      if (led_strip_mode ==
-          aimdk_msgs::srv::LedStripCommand::Request::LED_CUSTOM) {
+       if (led_strip_mode == aimdk_msgs::srv::LedStripCommand::Request::LED_CUSTOM_BREATH ||
+           led_strip_mode == aimdk_msgs::srv::LedStripCommand::Request::LED_CUSTOM_BLINK) {
         int channel_input = 0;
         int period_input = 1000;
 

@@ -172,11 +172,11 @@ class PlayLightsClient(Node):
                 self.get_logger().info("SetNeckLight request accepted.")
                 return True
             
-            self.get_logger().error(
-                f"SetNeckLight failed. "
-                f"code={code} status={status} "
-                f"msg={response.header.message}"
-            )
+             self.get_logger().error(
+                 f"SetNeckLight failed. "
+                 f"code={code} status={response.header.status.value} "
+                 f"msg={response.header.message}"
+             )
             return False
         except Exception as error:  # noqa: BLE001
             self.get_logger().error(f"Exception in set_neck_light: {error}")
@@ -236,7 +236,7 @@ def main(args=None):
             b = 0
             period = 0
 
-            if led_strip_mode == LedStripCommand.Request.LED_CUSTOM:
+            if led_strip_mode == LedStripCommand.Request.LED_CUSTOM_BREATH or led_strip_mode == LedStripCommand.Request.LED_CUSTOM_BLINK:
                 r = read_int("  Enter r (0-255, default 0): ", 0)
                 g = read_int("  Enter g (0-255, default 0): ", 0)
                 b = read_int("  Enter b (0-255, default 255): ", 255)
