@@ -201,17 +201,8 @@ class SetMcPresetMotionClient(Node):
             if future is None or future.result() is None:
                 return False
             
-            result = future.result()
-            if result.response.status.value == CommonState.SUCCESS:
-                return True
-            
-            self.get_logger().error(
-                f'SetMcAction failed. '
-                f'code={result.response.header.code} status={result.response.status.value} '
-                f'msg={result.response.message}'
-            )
-            
-            return False
+             result = future.result()
+             return result and result.response.status.value == CommonState.SUCCESS
         except Exception as e:
             self.get_logger().error(f'Error calling SetMcAction: {e}')
             return False
@@ -323,14 +314,22 @@ class SetMcPresetMotionClient(Node):
 
         self.get_logger().info(f'Sending preset motion request: ID={motion_id}')
 
-        future = self.call_service_with_retry(self.preset_client, request, "SetMcPresetMotion")
-        if future is None or future.result() is None:
-            return False
-        res = future.result()
-        if res.response.header.code == 0:
-            self.get_logger().info(f'Motion request accepted. Task ID: {res.response.task_id}')
-            return True
-        return False
+         future = self.call_service_with_retry(self.preset_client, request, "SetMcPresetMotion")
+         if future is None or future.result() is None:
+             return False
+         res = future.result()
+         if res and res.response.header.code == 0:
+             self.get_logger().info(f'Motion request accepted. Task ID: {res.response.task_id}')
+             return True
+         
+         if res:
+             self.get_logger().error(
+                 f'SetMcPresetMotion failed. '
+                 f'code={res.response.header.code} status={res.response.state.value} '
+                 f'reason={res.response.state.reason}'
+             )
+         
+         return False
 
 
 def main(args=None):
