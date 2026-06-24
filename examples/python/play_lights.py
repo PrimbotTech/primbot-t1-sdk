@@ -172,7 +172,7 @@ class PlayLightsClient(Node):
                 self.get_logger().info("SetNeckLight request accepted.")
                 return True
             
-             self.get_logger().error(
+            self.get_logger().error(
                  f"SetNeckLight failed. "
                  f"code={code} status={response.header.status.value} "
                  f"msg={response.header.message}"
