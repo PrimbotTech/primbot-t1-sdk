@@ -1,25 +1,25 @@
-/**
- * @brief Example client for /aimdk_5Fmsgs/srv/PlayAudioFile
- *
- * Default sample rate is 24kHz. Audio files must be 24kHz, 16-bit PCM, mono WAV format.
- *
- * The following ROS parameters can be set via startup arguments:
- * --ros-args -p <name>:=<value>
- *
- * Supported parameters:
- *   - file_name: audio file name only
- *   - file_path: directory containing the audio file
- *
- *Usage:
- *   ros2 run aimdk_examples_cpp play_audio --ros-args -p
- *   file_name:=demo.wav -p file_path:=/tmp
+/*
+ @brief Example client for /aimdk_5Fmsgs/srv/PlayAudioFile
  
- *Examples:
- *   ros2 run aimdk_examples_cpp play_audio --ros-args -p
- *   file_name:=小星星.wav -p file_path:=/robot/software/aimrt_agent/bin/cfg/t1/audio
- *
- * Other request fields use built-in defaults and are not configurable from
- * the command line in this demo.
+ Default sample rate is 24kHz. Audio files must be 24kHz, 16-bit PCM, mono WAV format.
+ 
+ The following ROS parameters can be set via startup arguments:
+ --ros-args -p <name>:=<value>
+ 
+ Supported parameters:
+   - file_name: audio file name only
+   - file_path: directory containing the audio file
+ 
+ Usage:
+   ros2 run aimdk_examples_cpp play_audio --ros-args -p
+   file_name:=demo.wav -p file_path:=/tmp
+ 
+ Examples:
+   ros2 run aimdk_examples_cpp play_audio --ros-args -p
+   file_name:=小星星.wav -p file_path:=/robot/software/aimrt_agent/bin/cfg/t1/audio
+ 
+ Other request fields use built-in defaults and are not configurable from
+ the command line in this demo.
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"

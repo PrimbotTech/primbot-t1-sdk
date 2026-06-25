@@ -1,36 +1,36 @@
-/**
- * @brief Example client for CaptureJpegImage service.
- *
- * The following ROS parameters can be set via startup arguments:
- * --ros-args -p <name>:=<value>
- *
- * Supported parameters:
- *   - service_name: CaptureJpegImage service name
- *   - camera_id: Camera identifier (interactive prompt if not provided)
-      *   - Available camera_id options:
-      *     - head_stereo_left
-      *     - head_stereo_right
-      *     - head_TOF3D
-      *     - hip_TOF3D_front
-      *     - hip_TOF3D_back
-      *     - TOF3D_left
-      *     - TOF3D_right
-      *     - fisheye_left
-      *     - fisheye_right
-      *     For details, please refer to the interface documentation.
- *   - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
- *     follow the server default.
- *   - output_file: local JPEG output path. Leave empty to auto-generate one.
- *
- * Interactive Mode:
- *   If camera_id is not provided via -p camera_id:=<value>,
- *   the program will prompt for input. Press Enter to use the default value.
- *
- * Examples:
- *   # Interactive mode (will prompt for camera_id)
- *   ros2 run aimdk_examples_cpp get_jpg --ros-args \
- *     -p output_file:=/tmp/camera_capture.jpg
- *
+/*
+ @brief Example client for CaptureJpegImage service.
+ 
+ The following ROS parameters can be set via startup arguments:
+ --ros-args -p <name>:=<value>
+ 
+ Supported parameters:
+   - service_name: CaptureJpegImage service name
+   - camera_id: Camera identifier (interactive prompt if not provided)
+        - Available camera_id options:
+          - head_stereo_left
+          - head_stereo_right
+          - head_TOF3D
+          - hip_TOF3D_front
+          - hip_TOF3D_back
+          - TOF3D_left
+          - TOF3D_right
+          - fisheye_left
+          - fisheye_right
+          For details, please refer to the interface documentation.
+   - timeout_ms: wait time for a fresh JPEG frame, in milliseconds. Use 0 to
+     follow the server default.
+   - output_file: local JPEG output path. Leave empty to auto-generate one.
+ 
+ Interactive Mode:
+   If camera_id is not provided via -p camera_id:=<value>,
+   the program will prompt for input. Press Enter to use the default value.
+ 
+ Examples:
+   # Interactive mode (will prompt for camera_id)
+   ros2 run aimdk_examples_cpp get_jpg --ros-args \
+     -p output_file:=/tmp/camera_capture.jpg
+ 
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"

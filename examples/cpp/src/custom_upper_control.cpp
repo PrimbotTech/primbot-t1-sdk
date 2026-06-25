@@ -1,17 +1,17 @@
-/**
- * T1 Custom Upper Control Example
- *
- * Description:
- *   Demonstrates how to publish upper-body joint commands to
- *   /aima/mc/custom/joint/command with aimdk_msgs/msg/McCustomJointCommand.
- *
- * Prerequisites:
- *   - MC must stay running. Do not disable the robot motion control module.
- *   - Switch the robot to BIPED_CUSTOM_UPPER before running this example.
- *   - Keep the robot in a safe, open environment.
- *
- * Usage:
- *   ros2 run aimdk_examples_cpp custom_upper_control
+/*
+ T1 Custom Upper Control Example
+ 
+ Description:
+   Demonstrates how to publish upper-body joint commands to
+   /aima/mc/custom/joint/command with aimdk_msgs/msg/McCustomJointCommand.
+ 
+ Prerequisites:
+   - MC must stay running. Do not disable the robot motion control module.
+   - Switch the robot to BIPED_CUSTOM_UPPER before running this example.
+   - Keep the robot in a safe, open environment.
+ 
+ Usage:
+   ros2 run aimdk_examples_cpp custom_upper_control
  */
 
 #include "aimdk_msgs/msg/joint_command.hpp"

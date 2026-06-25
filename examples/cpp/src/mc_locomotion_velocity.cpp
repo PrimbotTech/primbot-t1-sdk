@@ -1,25 +1,25 @@
-/**
- * @brief Example client for /aima/mc/locomotion/velocity.
- *
- * This script automatically handles the required state machine transitions for safety.
- * Locomotion control (walking/running) requires the robot to be in
- * QUADRUPED_LOCOMOTION_DEFAULT mode.
- *
- * Prerequisites auto-handled by this script:
- *   The script ensures a safe sequential transition path:
- *   PASSIVE_DEFAULT -> QUADRUPED_STAND_DEFAULT -> QUADRUPED_LOCOMOTION_DEFAULT
- *   Depending on the initial state, it enters the sequence at the appropriate step.
- *
- * Flow:
- *   1. Detect current state and transition to QUADRUPED_LOCOMOTION_DEFAULT sequentially.
- *   2. Register this node as an authorized input source (priority 80).
- *   3. Prompt the user for target velocities.
- *   4. Publish velocity commands for 5 seconds.
- *   5. Stop the robot by sending zero velocity.
- *   6. Release the registered input source.
- *
- * Usage:
- *   ros2 run aimdk_examples_cpp mc_locomotion_velocity
+/*
+ @brief Example client for /aima/mc/locomotion/velocity.
+ 
+ This script automatically handles the required state machine transitions for safety.
+ Locomotion control (walking/running) requires the robot to be in
+ QUADRUPED_LOCOMOTION_DEFAULT mode.
+ 
+ Prerequisites auto-handled by this script:
+   The script ensures a safe sequential transition path:
+   PASSIVE_DEFAULT -> QUADRUPED_STAND_DEFAULT -> QUADRUPED_LOCOMOTION_DEFAULT
+   Depending on the initial state, it enters the sequence at the appropriate step.
+ 
+ Flow:
+   1. Detect current state and transition to QUADRUPED_LOCOMOTION_DEFAULT sequentially.
+   2. Register this node as an authorized input source (priority 80).
+   3. Prompt the user for target velocities.
+   4. Publish velocity commands for 5 seconds.
+   5. Stop the robot by sending zero velocity.
+   6. Release the registered input source.
+ 
+ Usage:
+   ros2 run aimdk_examples_cpp mc_locomotion_velocity
  */
 #include "aimdk_msgs/msg/mc_locomotion_velocity.hpp"
 #include "aimdk_msgs/msg/common_request.hpp"

@@ -1,3 +1,18 @@
+/*
+ T1 Touch State Echo Example
+
+ Description:
+   Subscribes to /aima/hal/touch/state and prints touch sensor events with
+   message header timing, sensor ID, and event type.
+
+ Prerequisites:
+   - The robot touch state topic must be published.
+   - Source the SDK environment before running this example.
+
+ Usage:
+   ros2 run aimdk_examples_cpp get_touch_state
+ */
+
 #include "aimdk_msgs/msg/touch_state.hpp"
 #include "rclcpp/rclcpp.hpp"
 

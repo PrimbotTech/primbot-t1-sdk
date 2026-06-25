@@ -1,3 +1,19 @@
+/*
+ T1 BMS State Echo Example
+
+ Description:
+   Subscribes to /aima/hal/bms/state and prints battery management system
+   information, including manufacturer data, status bits, voltage, current,
+   power, temperature, capacity, and cycle count.
+
+ Prerequisites:
+   - The robot BMS state topic must be published.
+   - Source the SDK environment before running this example.
+
+ Usage:
+   ros2 run aimdk_examples_cpp get_bms_state
+ */
+
 #include "aimdk_msgs/msg/bms.hpp"
 #include "rclcpp/rclcpp.hpp"
 

@@ -1,40 +1,40 @@
-/**
- * @brief Action Switch Example Script
- *
- * Description:
- *   This script demonstrates how to call the SetMcAction service to switch robot
- *   action states. Uses BFS on ACTION_GRAPH to automatically navigate the state
- *   machine transition path from the current action to the target action.
- *
- * Prerequisites:
- *   - Robot motion control service must be running
- *   - SetMcAction and GetMcAction services must be available
- *
- * Usage:
- *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action \
- *   [-p action_desc:=<ACTION>]
- *
- * Example:
- *   # Interactive mode: input target action via terminal
- *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action
- *
- *   # Non-interactive mode: specify action via parameter
- *   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action \
- *   -p action_desc:=QUADRUPED_LOCOMOTION_JUMP
- *
- * Parameters:
- *   - type: "action" or "motion", required (motion currently disabled)
- *   - action_desc: string, optional; if set, skips interactive input and executes directly
- *   - motion: string, required when type=motion
- *   - interrupt: bool, optional when type=motion, default=true
- *
- * Notes:
- *   - Single Switch: Switches to target action, holds for 2s, then auto-returns to QUADRUPED_LOCOMOTION_DEFAULT.
- *   - Auto Path: BFS finds shortest transition path on ACTION_GRAPH, skipping redundant steps.
- *   - Recovery: Handles DAMPING_DEFAULT by recovering to PASSIVE_DEFAULT first.
- *   - Retry: Each path step retries up to 5 times if the robot is still moving.
- *   - Ctrl+C Safety: During execution, Ctrl+C navigates back to QUADRUPED_LOCOMOTION_DEFAULT before exit.
- *   - WARNING: Do NOT use QUADRUPED_LOCOMOTION_JUMP for testing — the robot will jump and may cause injury or damage.
+/*
+ @brief Action Switch Example Script
+ 
+ Description:
+   This script demonstrates how to call the SetMcAction service to switch robot
+   action states. Uses BFS on ACTION_GRAPH to automatically navigate the state
+   machine transition path from the current action to the target action.
+ 
+ Prerequisites:
+   - Robot motion control service must be running
+   - SetMcAction and GetMcAction services must be available
+ 
+ Usage:
+   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action \
+   [-p action_desc:=<ACTION>]
+ 
+ Example:
+   # Interactive mode: input target action via terminal
+   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action
+ 
+   # Non-interactive mode: specify action via parameter
+   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action \
+   -p action_desc:=QUADRUPED_LOCOMOTION_JUMP
+ 
+ Parameters:
+   - type: "action" or "motion", required (motion currently disabled)
+   - action_desc: string, optional; if set, skips interactive input and executes directly
+   - motion: string, required when type=motion
+   - interrupt: bool, optional when type=motion, default=true
+ 
+ Notes:
+   - Single Switch: Switches to target action, holds for 2s, then auto-returns to QUADRUPED_LOCOMOTION_DEFAULT.
+   - Auto Path: BFS finds shortest transition path on ACTION_GRAPH, skipping redundant steps.
+   - Recovery: Handles DAMPING_DEFAULT by recovering to PASSIVE_DEFAULT first.
+   - Retry: Each path step retries up to 5 times if the robot is still moving.
+   - Ctrl+C Safety: During execution, Ctrl+C navigates back to QUADRUPED_LOCOMOTION_DEFAULT before exit.
+   - WARNING: Do NOT use QUADRUPED_LOCOMOTION_JUMP for testing — the robot will jump and may cause injury or damage.
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"

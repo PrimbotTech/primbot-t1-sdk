@@ -1,3 +1,21 @@
+/*
+ T1 Lights Control Example
+
+ Description:
+   Demonstrates how to control the LED strip and neck light using the
+   LedStripCommand and SetNeckLight services. The example provides an
+   interactive menu for selecting LED strip mode, custom RGB values, blink or
+   breath period, neck light enable state, and brightness.
+
+ Prerequisites:
+   - Robot light control services must be running.
+   - The neck light state topic is required to display state feedback.
+   - Source the SDK environment before running this example.
+
+ Usage:
+   ros2 run aimdk_examples_cpp play_lights
+ */
+
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/srv/led_strip_command.hpp"
 #include "aimdk_msgs/srv/set_neck_light.hpp"

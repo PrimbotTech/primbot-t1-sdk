@@ -1,27 +1,27 @@
-/**
- * @file volume_control.cpp
- * @brief Volume Control Demo Example Script
- * 
- * @description
- *   This script demonstrates how to control robot audio volume and mute settings using TTS services.
- *   Includes volume adjustment, mute toggle, and TTS playback demonstration.
- *   Note: If a volume setting step fails, the script will continue to the next step. Please check the logs for any errors.
- *   The original volume is recorded at startup and automatically restored when the demo finishes or Ctrl+C is pressed.
- * 
- * @prerequisites
- *   - Robot TTS service must be running
- *   - Audio output device must be working properly
- *   - Volume and mute services must be available
- * 
- * @usage
- *   colcon build --packages-select aimdk_examples_cpp
- *   ros2 run aimdk_examples_cpp volume_control
- * 
- * @example
- *   ros2 run aimdk_examples_cpp volume_control
- * 
- * @parameters
- *   - None
+/*
+ @file volume_control.cpp
+ @brief Volume Control Demo Example Script
+ 
+ @description
+   This script demonstrates how to control robot audio volume and mute settings using TTS services.
+   Includes volume adjustment, mute toggle, and TTS playback demonstration.
+   Note: If a volume setting step fails, the script will continue to the next step. Please check the logs for any errors.
+   The original volume is recorded at startup and automatically restored when the demo finishes or Ctrl+C is pressed.
+ 
+ @prerequisites
+   - Robot TTS service must be running
+   - Audio output device must be working properly
+   - Volume and mute services must be available
+ 
+ @usage
+   colcon build --packages-select aimdk_examples_cpp
+   ros2 run aimdk_examples_cpp volume_control
+ 
+ @example
+   ros2 run aimdk_examples_cpp volume_control
+ 
+ @parameters
+   - None
  */
 
 #include "aimdk_msgs/msg/common_request.hpp"
