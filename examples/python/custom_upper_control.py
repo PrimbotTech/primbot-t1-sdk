@@ -85,6 +85,8 @@ class CustomUpperControlNode(Node):
         self.current_demo_pose = self.default_stand_positions()
         self.sequence = 0
 
+        self._command_msg = self._initialize_command_message()
+
         self.get_logger().info(
             "custom_upper_control started. Make sure MC is running and the "
             "robot is already in BIPED_CUSTOM_UPPER."
@@ -123,21 +125,27 @@ class CustomUpperControlNode(Node):
         pose["FR_KNEE_Joint"] = 0.80 + 0.18 * math.sin(2.0 * math.pi * 1.5 * t)
         return pose
 
-    def publish_pose(self, pose: Dict[str, float]) -> None:
+    def _initialize_command_message(self) -> McCustomJointCommand:
         msg = McCustomJointCommand()
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.sequence = self.sequence
-        self.sequence += 1
-
         for name in JOINT_NAMES:
             joint = JointCommand()
             joint.name = name
-            joint.position = pose[name]
+            joint.position = 0.0
             joint.velocity = 0.0
             joint.effort = 0.0
             joint.stiffness = DEFAULT_STIFFNESS
             joint.damping = DEFAULT_DAMPING
             msg.joints.append(joint)
+        return msg
+
+    def publish_pose(self, pose: Dict[str, float]) -> None:
+        msg = self._command_msg
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.sequence = self.sequence
+        self.sequence += 1
+
+        for i, name in enumerate(JOINT_NAMES):
+            msg.joints[i].position = pose[name]
 
         self.command_pub.publish(msg)
 

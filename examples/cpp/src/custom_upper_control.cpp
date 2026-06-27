@@ -93,6 +93,8 @@ class CustomUpperControlNode : public rclcpp::Node
         std::bind(&CustomUpperControlNode::on_joint_state, this,
                   std::placeholders::_1));
 
+    initialize_command_message();
+
     RCLCPP_INFO(
         this->get_logger(),
         "custom_upper_control started. Make sure MC is running and the robot "
@@ -242,29 +244,36 @@ class CustomUpperControlNode : public rclcpp::Node
     return rclcpp::ok();
   }
 
-  void publish_pose(const Pose &pose)
+  void initialize_command_message()
   {
-    aimdk_msgs::msg::McCustomJointCommand msg;
-    msg.header.stamp = this->now();
-    msg.header.sequence = sequence_++;
-    msg.joints.reserve(kJointNames.size());
+    command_msg_.joints.resize(kJointNames.size());
 
-    for (const auto &name : kJointNames) {
-      aimdk_msgs::msg::JointCommand joint;
-      joint.name = name;
-      joint.position = pose.at(name);
+    for (size_t i = 0; i < kJointNames.size(); ++i) {
+      auto &joint = command_msg_.joints[i];
+      joint.name = kJointNames[i];
+      joint.position = 0.0;
       joint.velocity = 0.0;
       joint.effort = 0.0;
       joint.stiffness = kDefaultStiffness;
       joint.damping = kDefaultDamping;
-      msg.joints.push_back(std::move(joint));
+    }
+  }
+
+  void publish_pose(const Pose &pose)
+  {
+    command_msg_.header.stamp = this->now();
+    command_msg_.header.sequence = sequence_++;
+
+    for (size_t i = 0; i < kJointNames.size(); ++i) {
+      command_msg_.joints[i].position = pose.at(kJointNames[i]);
     }
 
-    command_pub_->publish(msg);
+    command_pub_->publish(command_msg_);
   }
 
   rclcpp::Publisher<aimdk_msgs::msg::McCustomJointCommand>::SharedPtr command_pub_;
   rclcpp::Subscription<aimdk_msgs::msg::JointStateArray>::SharedPtr state_sub_;
+  aimdk_msgs::msg::McCustomJointCommand command_msg_;
 
   mutable std::mutex mutex_;
   bool initial_state_ready_ = false;
