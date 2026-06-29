@@ -1,16 +1,16 @@
-/**
- * Usage:
- *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args -p output_file:=<path> -p capture_seconds:=<seconds>
- *
- * Notes:
- *   - After the recording duration expires, you MUST type 'y' in the terminal to trigger conversion and playback.
- *
- * Parameters:
- *   - output_file: Path to save the original 24kHz PCM file (Default: /tmp/audio_capture.pcm).
- *   - capture_seconds: Duration of automated recording in seconds (Default: 5s).
- *
- * Example:
- *   ros2 run aimdk_examples_cpp get_audio_stream --ros-args -p capture_seconds:=10
+/*
+ Usage:
+   ros2 run aimdk_examples_cpp get_audio_stream --ros-args -p output_file:=<path> -p capture_seconds:=<seconds>
+ 
+ Notes:
+   - After the recording duration expires, you MUST type 'y' in the terminal to trigger conversion and playback.
+ 
+ Parameters:
+   - output_file: Path to save the original 24kHz PCM file (Default: /tmp/audio_capture.pcm).
+   - capture_seconds: Duration of automated recording in seconds (Default: 5s).
+ 
+ Example:
+   ros2 run aimdk_examples_cpp get_audio_stream --ros-args -p capture_seconds:=10
  */
 #include "aimdk_msgs/msg/audio_capture.hpp"
 #include "aimdk_msgs/msg/audio_playback.hpp"

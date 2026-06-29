@@ -1,26 +1,26 @@
-/**
- * @brief Preset Motion Example Script
- *
- * Description:
- *   This script demonstrates how to call the SetMcPresetMotion service to play preset
- *   motions (like waving or handshaking) on the robot. Supports T and Q series robots
- *   with interactive series and motion selection.
- *
- * Prerequisites:
- *   - Robot motion control service must be running
- *   - Robot must support BIPED_LOCOMOTION_WBC action state
- *   - SetMcPresetMotion service must be available
- *
- * Usage:
- *   ros2 run aimdk_examples_cpp set_preset_motion
- *
- * Example:
- *   # Interactive mode (will prompt for series and motion ID)
- *   ros2 run aimdk_examples_cpp set_preset_motion
- *
- * Supported Motions:
- *   T series: 1001=raise, 1002=wave, 1003=handshake, 2001=handheart
- *   Q series: 3001=wave, 3002=handshake, 3003=bump, 3004=wave_hand
+/*
+ @brief Preset Motion Example Script
+ 
+ Description:
+   This script demonstrates how to call the SetMcPresetMotion service to play preset
+   motions (like waving or handshaking) on the robot. Supports T and Q series robots
+   with interactive series and motion selection.
+ 
+ Prerequisites:
+   - Robot motion control service must be running
+   - Robot must support BIPED_LOCOMOTION_WBC action state
+   - SetMcPresetMotion service must be available
+ 
+ Usage:
+   ros2 run aimdk_examples_cpp set_preset_motion
+ 
+ Example:
+   # Interactive mode (will prompt for series and motion ID)
+   ros2 run aimdk_examples_cpp set_preset_motion
+ 
+ Supported Motions:
+   T series: 1001=raise, 1002=wave, 1003=handshake, 2001=handheart
+   Q series: 3001=wave, 3002=handshake, 3003=bump, 3004=wave_hand
  */
 #include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/common_state.hpp"

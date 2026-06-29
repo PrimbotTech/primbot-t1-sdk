@@ -1,32 +1,40 @@
-// 注意：在使用本脚本前，需首先关闭机器人本体运控模块并将机器人平躺或悬挂，否则可能出现不可预期的异常行为！
-// Prerequisites:
-//     1. Build the SDK: `colcon build`
-//     2. Source environment: `source install/setup.bash`
-//
-// Before running the following command, place the robot flat on the ground.
-//
-// T1 Available Joints:
-//   Left  Arm : FL_HIP_ROLL_Joint  [-0.47, 0.47], FL_HIP_PITCH_Joint [-1.22, 4.36], FL_KNEE_Joint [-2.62, 2.62]
-//   Right Arm : FR_HIP_ROLL_Joint  [-0.47, 0.47], FR_HIP_PITCH_Joint [-1.22, 4.36], FR_KNEE_Joint [-2.62, 2.62]
-//   Left  Leg : RL_HIP_ROLL_Joint  [-1.57, 1.57], RL_HIP_PITCH_Joint [0.00, 3.14], RL_KNEE_Joint [-2.62, -0.17], RL_FOOT_Joint [-10.0, 10.0]
-//   Right Leg : RR_HIP_ROLL_Joint  [-1.57, 1.57], RR_HIP_PITCH_Joint [0.00, 3.14], RR_KNEE_Joint [-2.62, -0.17], RR_FOOT_Joint [-10.0, 10.0]
-//   (Position unit: rad)
-//
-// Example:
-//     ros2 run aimdk_examples_cpp joint_control --ros-args \
-//       -p joint_names:="['FL_HIP_PITCH_Joint']" \
-//       -p target_positions:="[2.0]" \
-//       -p stiffness:="[80.0]" \
-//       -p damping:="[0.5]" \
-//       -p default_stiffness:=80.0 \
-//       -p default_damping:=0.5
-//
-// Notes:
-//   - joint_names and target_positions must have the same length.
-//   - stiffness and damping are optional. If omitted, default_stiffness and
-//     default_damping are used for every joint.
-//   - The node waits for /aima/hal/joint/state, then uses Ruckig to publish
-//     trajectory points to /aima/hal/joint/command until the target is reached.
+/*
+ T1 Joint Control Example
+
+ Description:
+   Sends joint position commands to /aima/hal/joint/command. The node waits for
+   /aima/hal/joint/state, builds a Ruckig trajectory from the current position,
+   and publishes trajectory points until the target is reached.
+
+ Safety Notice:
+   注意：在使用本脚本前，需首先关闭机器人本体运控模块并将机器人平躺或悬挂，否则可能出现不可预期的异常行为！
+   Before running the following command, place the robot flat on the ground.
+
+ Prerequisites:
+   1. Build the SDK: colcon build
+   2. Source environment: source install/setup.bash
+
+ T1 Available Joints:
+   Left  Arm : FL_HIP_ROLL_Joint  [-0.47, 0.47], FL_HIP_PITCH_Joint [-1.22, 4.36], FL_KNEE_Joint [-2.62, 2.62]
+   Right Arm : FR_HIP_ROLL_Joint  [-0.47, 0.47], FR_HIP_PITCH_Joint [-1.22, 4.36], FR_KNEE_Joint [-2.62, 2.62]
+   Left  Leg : RL_HIP_ROLL_Joint  [-1.57, 1.57], RL_HIP_PITCH_Joint [0.00, 3.14], RL_KNEE_Joint [-2.62, -0.17], RL_FOOT_Joint [-10.0, 10.0]
+   Right Leg : RR_HIP_ROLL_Joint  [-1.57, 1.57], RR_HIP_PITCH_Joint [0.00, 3.14], RR_KNEE_Joint [-2.62, -0.17], RR_FOOT_Joint [-10.0, 10.0]
+   Position unit: rad
+
+ Example:
+   ros2 run aimdk_examples_cpp joint_control --ros-args \
+     -p joint_names:="['FL_HIP_PITCH_Joint']" \
+     -p target_positions:="[2.0]" \
+     -p stiffness:="[80.0]" \
+     -p damping:="[0.5]" \
+     -p default_stiffness:=80.0 \
+     -p default_damping:=0.5
+
+ Parameters:
+   - joint_names and target_positions must have the same length.
+   - stiffness and damping are optional. If omitted, default_stiffness and
+     default_damping are used for every joint.
+ */
 #include <ruckig/ruckig.hpp>
 #include "aimdk_msgs/msg/joint_command_array.hpp"
 #include "aimdk_msgs/msg/joint_state_array.hpp"

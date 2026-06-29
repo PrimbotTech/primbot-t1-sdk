@@ -160,7 +160,7 @@ class VolumeControlClient(Node):
             f"error_message={response.tts_resp.error_message}"
         )
 
-         if not response.tts_resp.is_success:
+        if not response.tts_resp.is_success:
              self.get_logger().error(
                  f"PlayTts failed. "
                  f"code={response.header.header.code} status={response.header.status.value} "
