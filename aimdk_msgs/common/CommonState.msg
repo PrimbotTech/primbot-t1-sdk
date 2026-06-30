@@ -43,3 +43,11 @@ uint32 REASON_OBSTACLE_RIGHT   = 13  # 右方有障碍物
 uint32 REASON_OBSTACLE_UP      = 14  # 上方有障碍物
 uint32 REASON_TASK_RUNNING     = 15  # 其他任务正在运行
 uint32 REASON_TARGET_STATE     = 16  # 机器人已经是目标状态
+
+uint8 REASON_NOT_FOUND            = 17
+uint8 REASON_NO_SKILL_LIST        = 18
+uint8 REASON_FORM_MIS_MATCH       = 19
+uint8 REASON_ACTION_NOT_MATCH     = 20
+uint8 REASON_ACTION_BLACKLISTED   = 21
+uint8 REASON_NO_TRANSFER_PATH     = 22
+uint8 REASON_NO_ELIGIBLE_SKILL    = 23
