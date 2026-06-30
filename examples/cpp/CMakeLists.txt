@@ -21,7 +21,7 @@ set(EXAMPLE_TARGETS
   set_mc_action
   set_preset_motion
   volume_control
-  custom_upper_control
+  upper_body_control
 )
 
 foreach(EXAMPLE_TARGET ${EXAMPLE_TARGETS})

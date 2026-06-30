@@ -9,8 +9,8 @@ Description:
 
 Prerequisites:
   - MC must stay running. Do not disable the robot motion control module.
-  - Switch the robot to BIPED_CUSTOM_UPPER before running this example.
-  - Keep the robot in a safe, open environment.
+  - Robot must be in a safe environment for motion testing.
+  - State machine will auto-transition to BIPED_CUSTOM_UPPER before publishing commands.
 
 Usage:
   python3 examples/python/custom_upper_control.py
@@ -25,7 +25,17 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 
-from aimdk_msgs.msg import JointCommand, JointStateArray, McCustomJointCommand
+from aimdk_msgs.srv import GetMcAction, SetMcAction
+from aimdk_msgs.msg import (
+    CommonRequest,
+    JointCommand,
+    JointStateArray,
+    McAction,
+    McActionCommand,
+    McActionStatus,
+    McCustomJointCommand,
+    RequestHeader,
+)
 
 
 PUBLISH_RATE_HZ = 1000.0
@@ -67,7 +77,7 @@ class CustomUpperControlNode(Node):
     def __init__(self) -> None:
         super().__init__("custom_upper_control")
 
-        qos = QoSProfile(
+        self.qos = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=10,
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -75,22 +85,110 @@ class CustomUpperControlNode(Node):
         )
 
         self.command_pub = self.create_publisher(
-            McCustomJointCommand, "/aima/mc/custom/joint/command", qos
+            McCustomJointCommand, "/aima/mc/custom/joint/command", self.qos
         )
-        self.state_sub = self.create_subscription(
-            JointStateArray, "/aima/hal/joint/state", self.on_joint_state, qos
+        
+        self.set_action_client = self.create_client(
+            SetMcAction, "/aimdk_5Fmsgs/srv/SetMcAction"
+        )
+        self.get_action_client = self.create_client(
+            GetMcAction, "/aimdk_5Fmsgs/srv/GetMcAction"
         )
 
         self.initial_positions: Optional[Dict[str, float]] = None
         self.current_demo_pose = self.default_stand_positions()
         self.sequence = 0
 
-        self._command_msg = self._initialize_command_message()
+        self.get_logger().info(
+            "custom_upper_control started. Make sure MC is running. The robot "
+            "will auto-transition to BIPED_CUSTOM_UPPER before publishing commands."
+        )
+    def startsub(self):
+        self.state_sub = self.create_subscription(
+            JointStateArray, "/aima/hal/joint/state", self.on_joint_state, self.qos
+        )
+    def get_action_desc(self) -> Optional[str]:
+        request = GetMcAction.Request()
+        request.request = CommonRequest()
+        request.request.header.stamp = self.get_clock().now().to_msg()
+
+        future = self.get_action_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        if not future.done() or future.result() is None:
+            return None
+
+        response = future.result()
+        if response.info.status.value != McActionStatus.RUNNING:
+            return None
+        return response.info.action_desc
+
+    def set_action(self, action_desc: str) -> bool:
+        request = SetMcAction.Request()
+        request.header = RequestHeader()
+        request.header.stamp = self.get_clock().now().to_msg()
+        request.source = "node"
+        request.command = McActionCommand()
+        request.command.action = McAction()
+        request.command.action_desc = action_desc
+
+        self.get_logger().info(f"Requesting state switch to: {action_desc}")
+        future = self.set_action_client.call_async(request)
+        rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
+        return future.done() and future.result() is not None
+
+    def wait_for_action(self, action_desc: str, timeout_sec: float = 20.0) -> bool:
+        deadline = time.monotonic() + timeout_sec
+        while rclpy.ok() and not g_stop and time.monotonic() < deadline:
+            if self.get_action_desc() == action_desc:
+                self.get_logger().info(f"Robot reached state: {action_desc}")
+                return True
+            time.sleep(0.5)
+
+        self.get_logger().error(f"Timeout waiting for state: {action_desc}")
+        return False
+
+    def switch_to_custom_upper(self) -> bool:
+        if not self.set_action_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("SetMcAction service is not available.")
+            return False
+        if not self.get_action_client.wait_for_service(timeout_sec=5.0):
+            self.get_logger().error("GetMcAction service is not available.")
+            return False
+
+        current_action = self.get_action_desc()
+        if current_action == "BIPED_CUSTOM_UPPER":
+            return True
 
         self.get_logger().info(
-            "custom_upper_control started. Make sure MC is running and the "
-            "robot is already in BIPED_CUSTOM_UPPER."
+            f"Current state is {current_action}. Switching to BIPED_CUSTOM_UPPER."
         )
+
+        sequence = [
+            "PASSIVE_DEFAULT",
+            "QUADRUPED_LOCOMOTION_DEFAULT",
+            "BIPED_LOCOMOTION_WBC",
+            "BIPED_CUSTOM_UPPER",
+        ]
+
+        start_index = 0
+        if current_action == "PASSIVE_DEFAULT":
+            start_index = 1
+        elif current_action == "QUADRUPED_LOCOMOTION_DEFAULT":
+            start_index = 2
+        elif current_action == "BIPED_LOCOMOTION_WBC":
+            start_index = 3
+        elif current_action in ["DAMPING_DEFAULT", "STORE_DEFAULT"]:
+            start_index = 0
+        else:
+            start_index = 3
+
+        for action_desc in sequence[start_index:]:
+            wait_desc = "BIPED_LOCOMOTION_WBC" if action_desc == "QUADRUPED_TO_BIPED" else action_desc
+            if not self.set_action(action_desc) or not self.wait_for_action(wait_desc):
+                return False
+            time.sleep(1.0)
+
+        return True
 
     def on_joint_state(self, msg: JointStateArray) -> None:
         if self.initial_positions is not None:
@@ -125,27 +223,21 @@ class CustomUpperControlNode(Node):
         pose["FR_KNEE_Joint"] = 0.80 + 0.18 * math.sin(2.0 * math.pi * 1.5 * t)
         return pose
 
-    def _initialize_command_message(self) -> McCustomJointCommand:
+    def publish_pose(self, pose: Dict[str, float]) -> None:
         msg = McCustomJointCommand()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.sequence = self.sequence
+        self.sequence += 1
+
         for name in JOINT_NAMES:
             joint = JointCommand()
             joint.name = name
-            joint.position = 0.0
+            joint.position = pose[name]
             joint.velocity = 0.0
             joint.effort = 0.0
             joint.stiffness = DEFAULT_STIFFNESS
             joint.damping = DEFAULT_DAMPING
             msg.joints.append(joint)
-        return msg
-
-    def publish_pose(self, pose: Dict[str, float]) -> None:
-        msg = self._command_msg
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.sequence = self.sequence
-        self.sequence += 1
-
-        for i, name in enumerate(JOINT_NAMES):
-            msg.joints[i].position = pose[name]
 
         self.command_pub.publish(msg)
 
@@ -231,25 +323,30 @@ def main() -> int:
     ret = 0
 
     try:
-        deadline = time.monotonic() + 10.0
-        while (
-            rclpy.ok()
-            and not g_stop
-            and node.initial_positions is None
-            and time.monotonic() < deadline
-        ):
-            rclpy.spin_once(node, timeout_sec=0.01)
-
-        if node.initial_positions is None:
-            node.get_logger().error(
-                "Timed out waiting for /aima/hal/joint/state with all custom upper joints."
-            )
+        if not node.switch_to_custom_upper():
             ret = 1
-        elif not g_stop and not node.run_demo():
-            ret = 0 if g_stop else 1
+        else:
+            time.sleep(1)
+            node.startsub()
+            deadline = time.monotonic() + 10.0
+            while (
+                rclpy.ok()
+                and not g_stop
+                and node.initial_positions is None
+                and time.monotonic() < deadline
+            ):
+                rclpy.spin_once(node, timeout_sec=0.01)
 
-        if rclpy.ok() and node.initial_positions is not None:
-            node.publish_default_for_shutdown()
+            if node.initial_positions is None:
+                node.get_logger().error(
+                    "Timed out waiting for /aima/hal/joint/state with all custom upper joints."
+                )
+                ret = 1
+            elif not g_stop and not node.run_demo():
+                ret = 0 if g_stop else 1
+
+            if rclpy.ok() and node.initial_positions is not None:
+                node.publish_default_for_shutdown()
     finally:
         node.destroy_node()
         if rclpy.ok():
