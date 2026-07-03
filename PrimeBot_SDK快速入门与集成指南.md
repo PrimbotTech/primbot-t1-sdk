@@ -474,21 +474,31 @@ my_ai_backend/
 ---
 
 ### 3.2 C++ 开发集成
-C++ 集成相对复杂，因为涉及到 CMake 找包和链接的过程。ROS2 原生使用 `colcon` 构建系统。
+C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `ament` / `colcon` 构建体系，工作空间根目录下包含 `aimdk_msgs`（消息定义包）和 `examples/cpp`（示例节点包）两个并列的 ament 包。
 
 #### 3.2.1 方式 A：在 SDK 内部新增节点
 如果您希望利用现成的编译配置进行快速开发：
 1. **新建源文件**：将您的 `.cpp` 源文件（例如 `my_robot_app.cpp`）放入 `primebot_sdk/examples/cpp/src/` 目录下。
 2. **修改编译配置**：打开 `primebot_sdk/examples/cpp/CMakeLists.txt`，参考 `demo.cpp` 的写法，在文件末尾的 `ament_package()` 之前追加您的配置：
     ```cmake
-    add_executable(my_robot_node src/my_robot_app.cpp)
-    ament_target_dependencies(my_robot_node rclcpp aimdk_msgs)
-    install(TARGETS
-      my_robot_node
-      DESTINATION lib/${PROJECT_NAME}
+    set(EXAMPLE_TARGETS
+      get_audio_stream
+      get_bms_state
+      # ... 其他已有示例 ...
+      upper_body_control
+      my_robot_node          # ← 在此处追加您的节点名称
     )
     ```
-3. **编译工程**：回到 `primebot_sdk` 根目录执行编译：
+    > **说明**：`CMakeLists.txt` 内部使用 `foreach` 循环，会自动在 `src/` 目录下查找与目标同名的 `.cpp` 文件并完成编译，无需单独编写 `add_executable`。
+    >
+    > 如果您的节点需要额外依赖（如 OpenCV），可在 `foreach` 循环后追加条件块，参考 `get_video_stream` 的写法：
+    > ```cmake
+    > if(EXAMPLE_TARGET STREQUAL “my_robot_node”)
+    >   target_link_libraries(${EXAMPLE_TARGET} <extra_lib>)
+    > endif()
+    > ```
+
+3. **编译工程**：在工作空间根目录下执行编译：
     ```bash
     cd /path/to/your/primebot_sdk
     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
@@ -501,7 +511,9 @@ C++ 集成相对复杂，因为涉及到 CMake 找包和链接的过程。ROS2 �
     ```
 
 #### 3.2.2 方式 B：作为独立第三方库集成
-如果您希望保持主工程的整洁，建议将第三方库的获取与编译逻辑**封装在专用的 `cmake/` 目录脚本**中，利用 CMake 原生的 `FetchContent` 模块实现“一次配置、统一编译”。
+如果您希望保持主工程的独立性，建议将 SDK 的引入逻辑**封装在专用的 `cmake/` 目录脚本**中，利用 CMake 原生的 `FetchContent` 模块实现”一次配置、统一编译”。
+
+> **注意**：SDK 工作空间包含 `aimdk_msgs` 和 `ruckig_for_primebot` 两个依赖包，需将二者同时纳入 FetchContent 管理。
 
 工程目录结构示例：
 ```text
@@ -518,57 +530,69 @@ my_project/
 1. **编写封装脚本**：在 `cmake/` 目录下创建 `GetPrimebotSDK.cmake`。通过这种方式能高度屏蔽底层依赖引入的复杂性：
     ```cmake
     include(FetchContent)
-    message(STATUS "Fetching primebot_sdk ...")
+    message(STATUS “Fetching primebot_sdk ...”)
 
-    # 声明 SDK 来源（这里假定我们将 SDK 源码解压放在了同级的 primebot_sdk 目录中）
-    # 您也可以直接将其改为 URL 或 GIT_REPOSITORY 从远端自动拉取
+    # ── 1. 引入消息定义包 aimdk_msgs ─────────────────────────────────────────
     FetchContent_Declare(
-      primebot_sdk
-      # 注意：SOURCE_DIR 应指向包含 CMakeLists.txt 的具体包目录
+      aimdk_msgs
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/aimdk_msgs
     )
 
-    # 使其可用：这会自动执行 SDK 内部的 CMakeLists 将其纳入您的工程编译树中
-    FetchContent_MakeAvailable(primebot_sdk)
+    # ── 2. 引入轨迹规划库 ruckig_for_primebot（按需）─────────────────────────
+    # 如果您的业务不需要关节轨迹规划，可省略此段
+    FetchContent_Declare(
+      ruckig_for_primebot
+      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/examples/ruckig_for_primebot
+    )
+
+    # 一次性将上述包加入编译树
+    FetchContent_MakeAvailable(aimdk_msgs ruckig_for_primebot)
     ```
 
 2. **在主配置中调用脚本并链接**：在主项目的顶级 `CMakeLists.txt` 中引入上面写好的模块：
     ```cmake
-    # ... 您的工程基础设置 (cmake_minimum_required, project 等) ...
-    
+    cmake_minimum_required(VERSION 3.16)
+    project(my_robot_project)
+
     # 寻找必需的 ROS 2 底层通信库
+    find_package(ament_cmake REQUIRED)
     find_package(rclcpp REQUIRED)
-    
+
     # 1. 引入并执行第三方依赖的获取脚本
     include(cmake/GetPrimebotSDK.cmake)
-    
-    # 【关键】确保程序在运行时能自动找到 build 目录下的共享库 (解决 .so 找不到的问题)
+
+    # 【关键】确保程序在运行时能自动找到 build 目录下的共享库（解决 .so 找不到的问题）
     set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
     set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
-    
+
     # 2. 声明您的业务节点文件
     add_executable(my_robot_node src/my_robot_app.cpp)
-    
+
     # 3. 链接目标依赖项
-    target_link_libraries(my_robot_node 
+    target_link_libraries(my_robot_node
         PRIVATE
         rclcpp::rclcpp
         # 注意：使用 FetchContent 集成时，需显式链接具体的类型支持库以确保运行路径正确
-        aimdk_msgs__rosidl_typesupport_cpp 
+        aimdk_msgs__rosidl_typesupport_cpp
         aimdk_msgs__rosidl_typesupport_fastrtps_cpp
     )
+
+    ament_package()
     ```
 
 3. **编写业务代码**：
-    由于不受目录限制，您可以像引用普通三方包一样自由导入 SDK 头文件开始编写业务：
+    消息头文件按 ROS 2 标准规则生成（子目录结构会被展平到 `msg/` 或 `srv/` 命名空间下），可像引用普通三方包一样导入：
     ```cpp
     // src/my_robot_app.cpp
-    #include "rclcpp/rclcpp.hpp"
-    #include "aimdk_msgs/msg/mc_action.hpp" // 引用 SDK 中的接口
+    #include “rclcpp/rclcpp.hpp”
+    #include “aimdk_msgs/msg/mc_action.hpp”
+    #include “aimdk_msgs/srv/set_mc_action.hpp”
 
-    // ... 编写高阶业务
-    auto my_action = aimdk_msgs::msg::McAction();
-    my_action.action_name = "wave_hand";
+    // 使用示例
+    auto action_msg = aimdk_msgs::msg::McAction();
+
+    auto set_action_client = node->create_client<aimdk_msgs::srv::SetMcAction>(
+        “/aimdk_5Fmsgs/srv/SetMcAction”);
     ```
 
 4. **一次性整体编译工程**：配置完成后，直接在主工程目录下发起编译即可，系统会自动解析并打包编译 SDK 与您的代码：
@@ -576,7 +600,7 @@ my_project/
     ```bash
     mkdir build && cd build
     cmake ..
-    make 
+    make
     ```
 
 5. **加载并运行**：

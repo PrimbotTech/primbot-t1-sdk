@@ -20,13 +20,6 @@ Supported parameters:
         Available camera_id options:
         - head_stereo_left
         - head_stereo_right
-        - head_TOF3D
-        - hip_TOF3D_front
-        - hip_TOF3D_back
-        - TOF3D_left
-        - TOF3D_right
-        - fisheye_left
-        - fisheye_right
         For details, please refer to the interface documentation.
   - timeout_ms: Wait time for a fresh JPEG frame, in milliseconds. Use 0 to
     follow the server default.
@@ -82,13 +75,6 @@ def get_camera_id_from_user() -> str:
     print("="*60)
     print("  head_stereo_left       - 头部双目左机")
     print("  head_stereo_right      - 头部双目右机")
-    print("  head_TOF3D             - 头部TOF")
-    print("  hip_TOF3D_front        - 胯部前TOF")
-    print("  hip_TOF3D_back         - 胯部后TOF")
-    print("  TOF3D_left             - 左侧TOF")
-    print("  TOF3D_right            - 右侧TOF")
-    print("  fisheye_left           - 左侧鱼眼")
-    print("  fisheye_right          - 右侧鱼眼")
     print("="*60)
     print("For camera_id corresponding to different robot configurations, please refer to the interface documentation.")
     print("")
