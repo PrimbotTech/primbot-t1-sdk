@@ -228,7 +228,16 @@ public:
       return false;
     }
 
-    if (!servo_client_->wait_for_service(std::chrono::seconds(kServiceWaitSeconds))) {
+    while (!stop_requested_ &&
+           !servo_client_->wait_for_service(std::chrono::seconds(kServiceWaitSeconds))) {
+      if (!rclcpp::ok()) {
+        RCLCPP_ERROR(this->get_logger(), "Shutdown while waiting for SetServo service.");
+        return false;
+      }
+      RCLCPP_INFO(this->get_logger(), "Waiting for service: %s", kSetServoServiceName);
+    }
+
+    if (stop_requested_ || !rclcpp::ok()) {
       RCLCPP_ERROR(this->get_logger(), "SetServo service not available.");
       return false;
     }
@@ -240,8 +249,8 @@ public:
     request->speed = speed;
 
     auto future = servo_client_->async_send_request(request);
-    const auto retcode = rclcpp::spin_until_future_complete(
-        shared_from_this(), future, std::chrono::seconds(5));
+      const auto retcode = rclcpp::spin_until_future_complete(
+          shared_from_this(), future, std::chrono::seconds(5));
 
     if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
       RCLCPP_ERROR(this->get_logger(), "SetServo call timed out.");
@@ -414,11 +423,13 @@ int main(int argc, char *argv[]) {
       return ok ? 0 : 1;
     } else if (choice == "2") {
       // Servo control mode
-      int position = std::stoi(get_int_from_user("\nEnter servo position (0-90 degrees): ", 0, 90));
-      int speed = std::stoi(get_int_from_user("Enter servo speed (100-1000): ", 100, 1000));
       
       auto node = std::make_shared<CaptureJpegClient>("");
       g_node = node;
+
+      int position = std::stoi(get_int_from_user("\nEnter servo position (0-90 degrees): ", 0, 90));
+      int speed = std::stoi(get_int_from_user("Enter servo speed (100-1000): ", 100, 1000));
+      
       const bool ok = node->set_servo(position, speed);
 
       g_node.reset();
