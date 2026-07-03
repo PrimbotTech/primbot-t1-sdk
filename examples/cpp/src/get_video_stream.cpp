@@ -202,13 +202,6 @@ void print_camera_list() {
   std::cout << std::string(60, '=') << std::endl;
   std::cout << "  head_stereo_left       - 头部双目左机" << std::endl;
   std::cout << "  head_stereo_right      - 头部双目右机" << std::endl;
-  std::cout << "  head_TOF3D             - 头部TOF" << std::endl;
-  std::cout << "  hip_TOF3D_front        - 胯部前TOF" << std::endl;
-  std::cout << "  hip_TOF3D_back         - 胯部后TOF" << std::endl;
-  std::cout << "  TOF3D_left             - 左侧TOF" << std::endl;
-  std::cout << "  TOF3D_right            - 右侧TOF" << std::endl;
-  std::cout << "  fisheye_left           - 左侧鱼眼" << std::endl;
-  std::cout << "  fisheye_right          - 右侧鱼眼" << std::endl;
   std::cout << std::string(60, '=') << std::endl;
   std::cout << "For camera_id corresponding to different robot configurations, please refer to the interface documentation." << std::endl;
   std::cout << std::endl;

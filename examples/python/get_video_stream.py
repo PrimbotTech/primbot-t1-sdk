@@ -95,7 +95,7 @@ def parse_args() -> argparse.Namespace:
         "--camera",
         dest="camera_id",
         default=None,  
-        help="Camera identifier (e.g., head_monocular_centra, head_stereo_left).",
+        help="Camera identifier (e.g., head_stereo_left).",
     )
     parser.add_argument(
         "--robot_ip",
@@ -121,13 +121,6 @@ def parse_args() -> argparse.Namespace:
         print("="*60)
         print("  head_stereo_left       - 头部双目左机")
         print("  head_stereo_right      - 头部双目右机")
-        print("  head_TOF3D             - 头部TOF")
-        print("  hip_TOF3D_front        - 胯部前TOF")
-        print("  hip_TOF3D_back         - 胯部后TOF")
-        print("  TOF3D_left             - 左侧TOF")
-        print("  TOF3D_right            - 右侧TOF")
-        print("  fisheye_left           - 左侧鱼眼")
-        print("  fisheye_right          - 右侧鱼眼")
         print("="*60)
         print("For camera_id corresponding to different robot configurations, please refer to the interface documentation.")
         print("")
