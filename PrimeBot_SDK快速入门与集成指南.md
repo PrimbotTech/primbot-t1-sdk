@@ -54,12 +54,12 @@
 ## 2. 快速开始
 > **说明**：以下流程以**开发 PC** 为例。在 **运控板** / **大脑板** 上直接开发时，流程相同。
 ### 2.1 环境依赖
-请确保开发环境满足以下基础要求，包括：**物理网络拓扑（开发 PC 与机器人网线直连或处于同一局域网子网）**的连通、**操作系统与中间件（Ubuntu 22.04.x + ROS2 Humble）**的正确安装，以及**跨设备通讯协议（基于 FastDDS 的 ROS2 通信）**的顺畅，以保证您的程序能够正常发现并控制机器人节点。
+请确保开发环境满足以下基础要求，包括：**物理网络拓扑**（开发 PC 与机器人网线直连或处于同一局域网子网）的连通、**操作系统与中间件**（Ubuntu 22.04.x + ROS2 Humble）的正确安装，以及**跨设备通讯协议**（基于 FastDDS 的 ROS2 通信）的顺畅，以保证您的程序能够正常发现并控制机器人节点。
 
 #### 2.1.1 网络环境
 **有线直连（推荐默认开发方式）：**
 
-将开发 PC 与机器人通过网线直连，并将两端网络接口配置到同一 IP 子网内，确保在同一网段。机器人出厂默认 IP 为大脑板 `10.1.1.10`、运控板 `10.1.1.100`，如与实际不符请以实际 IP 为准。
+将开发 PC 与机器人通过网线直连，并将两端网络接口配置到同一 IP 子网内，确保在同一网段。机器人出厂默认 IP 为大脑板 `10.1.1.101`、运控板 `10.1.1.100`，如与实际不符请以实际 IP 为准。
 
 **配置开发 PC 静态 IP：**
 
@@ -75,7 +75,7 @@
 6. 点击 **Apply** 保存配置，并重新开关一次网络开关以生效。
 配置完成后，可以在终端测试是否能与机器人通信：
 ```bash
-ping 10.1.1.10   # 测试连接大脑板
+ping 10.1.1.101   # 测试连接大脑板
 ping 10.1.1.100  # 测试连接运控板
 ```
 - **正常连接输出**（按下 `Ctrl+C` 停止测试）：
@@ -175,7 +175,7 @@ pip3 show colcon-core
 ```bash
 ros2 node list
 ```
-- **正常**：列出机器人端的 ROS2 节点名称（如 `/interaction`、`/hal_audio` 等）
+- **正常**：列出机器人端的 ROS2 节点名称（如 `/hal_camera`、`/hal_audio`、`/mc_ros2_node`等）
 - **异常**：输出为空或长时间卡住
 
 **3. 检查 Topic 列表**
@@ -306,8 +306,8 @@ source /path/to/your/primebot_sdk/install/setup.bash
 
 在完成 SDK 编译并加载环境变量后，可以测试是否能成功解析并接收到具体的业务数据：
 ```bash
-# 检查电源管理 (PMU) 数据
-timeout 5 ros2 topic echo /aima/hal/pmu/state --once
+# 检查电池管理系统 (BMS) 数据
+timeout 5 ros2 topic echo /aima/hal/bms/state --once
 ```
 - **正常**：输出对应的数据报文（如电压、电流、电量百分比等）。
 - **异常**：5 秒无输出（超时退出）或报错 → 参考 [5.2 数据收发异常排查](#52-数据收发异常排查)
@@ -474,12 +474,11 @@ my_ai_backend/
 ---
 
 ### 3.2 C++ 开发集成
-C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `ament` / `colcon` 构建体系，工作空间根目录下包含 `aimdk_msgs`（消息定义包）和 `examples/cpp`（示例节点包）两个并列的 ament 包。
-
+C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `ament` / `colcon` 构建体系。工作空间根目录下包含三个并列的 ament 包：aimdk_msgs（消息/服务定义）、examples/ruckig_for_primebot（关节轨迹规划库）以及 examples/cpp（C++ 示例节点包）。
 #### 3.2.1 方式 A：在 SDK 内部新增节点
 如果您希望利用现成的编译配置进行快速开发：
-1. **新建源文件**：将您的 `.cpp` 源文件（例如 `my_robot_app.cpp`）放入 `primebot_sdk/examples/cpp/src/` 目录下。
-2. **修改编译配置**：打开 `primebot_sdk/examples/cpp/CMakeLists.txt`，参考 `demo.cpp` 的写法，在文件末尾的 `ament_package()` 之前追加您的配置：
+1. **新建源文件**：将您的 `.cpp` 源文件（例如 `my_robot_node.cpp`）放入 `primebot_sdk/examples/cpp/src/` 目录下。
+2. **修改编译配置**：打开 `primebot_sdk/examples/cpp/CMakeLists.txt`，在文件顶部已有的 `set(EXAMPLE_TARGETS ...)` 列表中，参考 `get_bms_state` 等现有示例的写法，追加您的节点名称（即源文件去掉 `.cpp` 后缀的名字）：
     ```cmake
     set(EXAMPLE_TARGETS
       get_audio_stream
@@ -489,14 +488,21 @@ C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `amen
       my_robot_node          # ← 在此处追加您的节点名称
     )
     ```
-    > **说明**：`CMakeLists.txt` 内部使用 `foreach` 循环，会自动在 `src/` 目录下查找与目标同名的 `.cpp` 文件并完成编译，无需单独编写 `add_executable`。
+    > **说明**：`CMakeLists.txt` 内部使用 `foreach` 循环遍历 `EXAMPLE_TARGETS`，会自动在 `src/` 目录下查找与目标同名的 `.cpp` 文件（如 `src/my_robot_node.cpp`）并通过 `add_executable` 完成编译，同时统一绑定 `rclcpp` 与 `aimdk_msgs` 依赖，无需为每个节点单独编写 `add_executable`。若找不到同名源文件，编译会直接报 `Missing example source` 错误。
     >
-    > 如果您的节点需要额外依赖（如 OpenCV），可在 `foreach` 循环后追加条件块，参考 `get_video_stream` 的写法：
+    > 如果您的节点需要额外依赖，可在 `foreach` 循环体内参考现有示例追加条件块：OpenCV 参考 `get_video_stream`，关节轨迹规划库参考 `joint_control`：
     > ```cmake
-    > if(EXAMPLE_TARGET STREQUAL “my_robot_node”)
-    >   target_link_libraries(${EXAMPLE_TARGET} <extra_lib>)
+    > # OpenCV（参考 get_video_stream）
+    > if(EXAMPLE_TARGET STREQUAL "my_robot_node")
+    >   target_include_directories(${EXAMPLE_TARGET} PRIVATE ${OpenCV_INCLUDE_DIRS})
+    >   target_link_libraries(${EXAMPLE_TARGET} ${OpenCV_LIBS})
+    > endif()
+    > # 轨迹规划库 ruckig_for_primebot（参考 joint_control）
+    > if(EXAMPLE_TARGET STREQUAL "my_robot_node")
+    >   target_link_libraries(${EXAMPLE_TARGET} ruckig_for_primebot::ruckig_for_primebot)
     > endif()
     > ```
+    > 若使用 OpenCV 或 ruckig，请确保文件顶部已有对应的 `find_package(OpenCV ...)` / `find_package(ruckig_for_primebot REQUIRED)`（SDK 默认已包含）。
 
 3. **编译工程**：在工作空间根目录下执行编译：
     ```bash
@@ -511,7 +517,7 @@ C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `amen
     ```
 
 #### 3.2.2 方式 B：作为独立第三方库集成
-如果您希望保持主工程的独立性，建议将 SDK 的引入逻辑**封装在专用的 `cmake/` 目录脚本**中，利用 CMake 原生的 `FetchContent` 模块实现”一次配置、统一编译”。
+如果您希望保持主工程的独立性，建议将 SDK 的引入逻辑**封装在专用的 `cmake/` 目录脚本**中，利用 CMake 原生的 `FetchContent` 模块实现“一次配置、统一编译”。
 
 > **注意**：SDK 工作空间包含 `aimdk_msgs` 和 `ruckig_for_primebot` 两个依赖包，需将二者同时纳入 FetchContent 管理。
 
@@ -522,15 +528,16 @@ my_project/
 │   ├── GetPrimebotSDK.cmake   # SDK 的外部抓取与编译封装脚本
 │   └── primebot_sdk/          # 可以将 SDK 源码放在这里，或通过网络拉取
 ├── src/
-│   └── my_robot_app.cpp       # 您的业务与控制代码
+│   └── my_robot_node.cpp      # 您的业务与控制代码
 └── CMakeLists.txt             # 您的工程主 CMakeLists
+└── package.xml
 ```
 
 **集成操作步骤**：
 1. **编写封装脚本**：在 `cmake/` 目录下创建 `GetPrimebotSDK.cmake`。通过这种方式能高度屏蔽底层依赖引入的复杂性：
     ```cmake
     include(FetchContent)
-    message(STATUS “Fetching primebot_sdk ...”)
+    message(STATUS "Fetching primebot_sdk ...")
 
     # ── 1. 引入消息定义包 aimdk_msgs ─────────────────────────────────────────
     FetchContent_Declare(
@@ -566,7 +573,7 @@ my_project/
     set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 
     # 2. 声明您的业务节点文件
-    add_executable(my_robot_node src/my_robot_app.cpp)
+    add_executable(my_robot_node src/my_robot_node.cpp)
 
     # 3. 链接目标依赖项
     target_link_libraries(my_robot_node
@@ -583,16 +590,16 @@ my_project/
 3. **编写业务代码**：
     消息头文件按 ROS 2 标准规则生成（子目录结构会被展平到 `msg/` 或 `srv/` 命名空间下），可像引用普通三方包一样导入：
     ```cpp
-    // src/my_robot_app.cpp
-    #include “rclcpp/rclcpp.hpp”
-    #include “aimdk_msgs/msg/mc_action.hpp”
-    #include “aimdk_msgs/srv/set_mc_action.hpp”
+    // src/my_robot_node.cpp
+    #include "rclcpp/rclcpp.hpp"
+    #include "aimdk_msgs/msg/mc_action.hpp"
+    #include "aimdk_msgs/srv/set_mc_action.hpp"
 
     // 使用示例
     auto action_msg = aimdk_msgs::msg::McAction();
 
     auto set_action_client = node->create_client<aimdk_msgs::srv::SetMcAction>(
-        “/aimdk_5Fmsgs/srv/SetMcAction”);
+        "/aimdk_5Fmsgs/srv/SetMcAction");
     ```
 
 4. **一次性整体编译工程**：配置完成后，直接在主工程目录下发起编译即可，系统会自动解析并打包编译 SDK 与您的代码：
@@ -638,7 +645,7 @@ my_project/
 #### 领域-原子功能对照表
 | 领域分类 | 原子功能 | 选项指导 | 功能核心说明 |
 | :--- | :--- | :--- | :--- |
-| **运动控制** | 低层运控开发 | `domains.mc.low_level_dev - 低层运控开发` | 1. 授权开发者对机器人全身关节进行直接指令下发。<br>2. 机器人本体高层运动控制功能关闭。 |
+| **运动控制** | 低层运控开发 | `domains.mc.low_level_dev - 低层运控开发` | 1. 授权开发者对机器人全身关节进行直接指令下发。<br>2. 机器人本体高层运动控制功能需要手动关闭。 |
 
 ---
 
@@ -648,7 +655,7 @@ my_project/
 **Q: 运行 `ros2 node list` 无输出、或仅有 `/rosout`？**
 
 如果在 2.1.3 章节验证通讯环境时发现异常、无法与机器人发现彼此，通常代表底层的 DDS 节点发现（Discovery）机制受阻。请按以下步骤依次排查：
-1. **硬件与连通性检查**：确认机器人已开机，开发 PC 与机器人处于同一网段（例如 IP `10.1.1.99`）。使用 `ping 10.1.1.10` 和 `ping 10.1.1.100` 测试能正常收到回复，确认 ICMP 链路畅通。
+1. **硬件与连通性检查**：确认机器人已开机，开发 PC 与机器人处于同一网段（例如 IP `10.1.1.99`）。使用 `ping 10.1.1.101` 和 `ping 10.1.1.100` 测试能正常收到回复，确认 ICMP 链路畅通。
 2. **`ROS_DOMAIN_ID` 不一致**：确保您的 PC 端没有设置其他杂乱的 `ROS_DOMAIN_ID` 环境变量（机器人默认通常是 `0`），导致与机器人的隔离在不同的域内。
 3. **多网卡冲突**：如果 PC 同时连接了多个网络（例如插着网线的同时连着 WiFi），DDS 初始化时可能绑定到了错误的网卡（如无线网卡）。此时 DDS 发现报文无法到达机器人局域网。**强烈建议在网线直连时，临时禁用其他无关网卡（如断开 WiFi 或关闭手机热点）**。
 

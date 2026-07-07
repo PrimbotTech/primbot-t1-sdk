@@ -155,10 +155,10 @@ public:
           static_cast<int>(kServiceCallTimeoutSec * 1000)),
       int max_retries = kMaxRetryCount) {
     for (int i = 0; i < max_retries; ++i) {
-      auto future = client->async_send_request(request);
-      if (rclcpp::spin_until_future_complete(this->shared_from_this(), future, timeout) ==
+      auto result = client->async_send_request(request);
+      if (rclcpp::spin_until_future_complete(this->shared_from_this(), result, timeout) ==
           rclcpp::FutureReturnCode::SUCCESS) {
-        return future;
+        return result.future.share();
       }
       RCLCPP_INFO(this->get_logger(), "%s attempt %d/%d timed out, retrying...",
                   service_name.c_str(), i + 1, max_retries);

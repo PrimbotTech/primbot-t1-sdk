@@ -13,7 +13,7 @@ Prerequisites:
   - State machine will auto-transition to BIPED_CUSTOM_UPPER before publishing commands.
 
 Usage:
-  python3 examples/python/custom_upper_control.py
+  python3 examples/python/upper_body_control.py
 """
 
 import math
