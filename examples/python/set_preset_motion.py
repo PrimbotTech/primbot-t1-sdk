@@ -349,6 +349,9 @@ def main(args=None):
         for k, v in motion_map.items():
             print(f"  {k}: {v}")
         motion_id = int(input("\nEnter preset motion ID: "))
+        if motion_id not in motion_map:
+            print(f"Invalid motion ID '{motion_id}'. Please choose from the list above.")
+            sys.exit(1)
         node = SetMcPresetMotionClient()
         node.send_motion_request(motion_id)
     except KeyboardInterrupt:

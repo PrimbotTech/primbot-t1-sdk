@@ -11,7 +11,7 @@
  *   - State machine will auto-transition to BIPED_CUSTOM_UPPER before publishing commands.
  *
  * Usage:
- *   ros2 run aimdk_examples_cpp custom_upper_control
+ *   ros2 run aimdk_examples_cpp upper_body_control
  */
 
 #include "aimdk_msgs/msg/common_request.hpp"
