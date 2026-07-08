@@ -235,13 +235,12 @@ ros2 service list
 | **公共 (必选)** | **ROSIDL** | 生成并编译自定义 `aimdk_msgs` (支持 C++/Python) | APT |
 | | **Colcon** | ROS 2 包的统一构建入口 (`colcon build`) | APT |
 | | **Python3-Dev** | 提供 C 扩展编译所需的 Python 开发头文件 | APT |
-| **C++ 专用** | **OpenCV** | 支撑 `/aima/hal/video/stream` 流接收及图像处理开发 | APT |
+| **C++ 专用** | **OpenCV** | 支撑 `/aima/hal/video/stream` 流接收及图像处理开发 | **SDK 内置 (预编译 4.13.0，位于 `examples/opencv/`，无需自行安装)** |
+| | **FFmpeg 运行库** | 内置 OpenCV 的 RTSP/视频解码后端依赖 `libavcodec` 等系统库，需在运行环境中提供 | APT |
 | | **YAML-CPP** | 用于解析机器人本地或自定义的 YAML 配置文件 (可选) | APT |
-| | **FFmpeg** | 支撑原始 PCM/RTSP 音频视频流的录制与调试 | APT |
 | **Python 专用** | **NumPy** | 支撑 Python 图像处理及音频流的高效矩阵运算 | Pip |
 | | **OpenCV-Python** | 支撑 Python 视频流读取脚本 (`get_video_stream.py`) | Pip |
-| | **Nanobind** | 提供 C++ 与 Python 之间极高性能、轻量级的类型映射绑定支持 | Pip |
-| | **Scikit-build-core** | 现代 CMake 驱动构建后台，负责 SDK 内部二进制扩展模块的编译 | Pip |
+| | **Ruckig (Python 模块)** | 支撑 Python 轨迹规划脚本 (`joint_control.py`) | **SDK 内置 (预编译 `.so`，位于 `examples/python/`，无需自行编译)** |
 
 **2. 安装脚本**
 
@@ -258,19 +257,20 @@ sudo apt update && sudo apt install -y \
 ```
 
 **B. C++ 专用开发环境 (推荐 C++ 开发者安装)**
-如果您需要编译 C++ 示例程序或进行原生媒体流开发：
+SDK 已内置预编译的 OpenCV 4.13.0（位于 `examples/opencv/`），**无需再安装 `libopencv-dev`**。但内置 OpenCV 的视频后端依赖系统的 FFmpeg 运行库（`libavcodec` 等），因此仍需安装 `ffmpeg`：
 ```bash
 sudo apt install -y \
-    libopencv-dev \
-    libyaml-cpp-dev \
-    ffmpeg
+    ffmpeg \
+    libyaml-cpp-dev
 ```
+> **说明**：内置 OpenCV 版本（4.13.0）在 RTSP 流接收上比 Ubuntu 系统源自带的 4.5.x 更稳定，故 SDK 直接随包分发，`examples/cpp/CMakeLists.txt` 已通过 `set(OpenCV_DIR ...)` 指向该内置副本。
 
-**C. Python 专用开发环境 (针对 Python 示例运行与算法模块构建)**
-如果您需要运行 Python 示例脚本（如视频、音频处理）或编译 SDK 内置的 Ruckig 算法 Python 模块：
+**C. Python 专用开发环境 (针对 Python 示例运行)**
+如果您需要运行 Python 示例脚本（如视频、音频、轨迹规划处理）：
 ```bash
-pip3 install numpy opencv-python nanobind scikit-build-core
+pip3 install numpy opencv-python
 ```
+> **说明**：Ruckig 的 Python 模块（`ruckig_for_primebot.cpython-*.so`）已随 SDK 预编译并置于 `examples/python/`，无需再安装 `nanobind`、`scikit-build-core` 自行编译。
 
 ---
 
@@ -474,7 +474,7 @@ my_ai_backend/
 ---
 
 ### 3.2 C++ 开发集成
-C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `ament` / `colcon` 构建体系。工作空间根目录下包含三个并列的 ament 包：aimdk_msgs（消息/服务定义）、examples/ruckig_for_primebot（关节轨迹规划库）以及 examples/cpp（C++ 示例节点包）。
+C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `ament` / `colcon` 构建体系。工作空间根目录下包含两个可编译的 ament 包：aimdk_msgs（消息/服务定义）与 examples/cpp（C++ 示例节点包）。此外，`examples/opencv/`（预编译 OpenCV 4.13.0）与 `examples/ruckig_for_primebot/`（预编译关节轨迹规划库，仅含 `include/` 与 `lib/`）均为**随包分发的预编译依赖**，不参与 `colcon` 编译，由 `examples/cpp/CMakeLists.txt` 通过 `find_package` 直接引用。
 #### 3.2.1 方式 A：在 SDK 内部新增节点
 如果您希望利用现成的编译配置进行快速开发：
 1. **新建源文件**：将您的 `.cpp` 源文件（例如 `my_robot_node.cpp`）放入 `primebot_sdk/examples/cpp/src/` 目录下。
@@ -502,7 +502,7 @@ C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `amen
     >   target_link_libraries(${EXAMPLE_TARGET} ruckig_for_primebot::ruckig_for_primebot)
     > endif()
     > ```
-    > 若使用 OpenCV 或 ruckig，请确保文件顶部已有对应的 `find_package(OpenCV ...)` / `find_package(ruckig_for_primebot REQUIRED)`（SDK 默认已包含）。
+    > 若使用 OpenCV 或 ruckig，请确保文件顶部已有对应的 `find_package(OpenCV ...)` / `find_package(ruckig_for_primebot REQUIRED)`（SDK 默认已包含）。这两个库均由 SDK 以预编译形式内置（`examples/opencv/`、`examples/ruckig_for_primebot/`），`CMakeLists.txt` 顶部已通过 `set(OpenCV_DIR ...)` 与 `set(ruckig_for_primebot_DIR ...)` 指向内置副本，无需额外安装；编译产物会自动将对应 `.so` 拷贝到二进制同目录并写入 `$ORIGIN` RPATH，运行时无需设置 `LD_LIBRARY_PATH`。
 
 3. **编译工程**：在工作空间根目录下执行编译：
     ```bash
@@ -519,7 +519,7 @@ C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `amen
 #### 3.2.2 方式 B：作为独立第三方库集成
 如果您希望保持主工程的独立性，建议将 SDK 的引入逻辑**封装在专用的 `cmake/` 目录脚本**中，利用 CMake 原生的 `FetchContent` 模块实现“一次配置、统一编译”。
 
-> **注意**：SDK 工作空间包含 `aimdk_msgs` 和 `ruckig_for_primebot` 两个依赖包，需将二者同时纳入 FetchContent 管理。
+> **注意**：SDK 工作空间中，`aimdk_msgs` 是需从源码编译的 ament 包（用 `FetchContent` 纳入）；而 `ruckig_for_primebot` 已改为**预编译库**（`examples/ruckig_for_primebot/` 下仅含 `include/` 与 `lib/`，不含源码），因此改用 `find_package` 直接引用其内置的 CMake 配置，无需再编译。OpenCV 同理（内置 `examples/opencv/`）。
 
 工程目录结构示例：
 ```text
@@ -539,21 +539,24 @@ my_project/
     include(FetchContent)
     message(STATUS "Fetching primebot_sdk ...")
 
-    # ── 1. 引入消息定义包 aimdk_msgs ─────────────────────────────────────────
+    # ── 1. 引入消息定义包 aimdk_msgs（需从源码编译，用 FetchContent）──────────
     FetchContent_Declare(
       aimdk_msgs
       SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/aimdk_msgs
     )
+    FetchContent_MakeAvailable(aimdk_msgs)
 
-    # ── 2. 引入轨迹规划库 ruckig_for_primebot（按需）─────────────────────────
-    # 如果您的业务不需要关节轨迹规划，可省略此段
-    FetchContent_Declare(
-      ruckig_for_primebot
-      SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/examples/ruckig_for_primebot
-    )
+    # ── 2. 引入预编译的轨迹规划库 ruckig_for_primebot（按需）─────────────────
+    # 该库以预编译形式随 SDK 分发，直接用 find_package 指向其内置 CMake 配置，
+    # 无需再从源码编译。如果您的业务不需要关节轨迹规划，可省略此段。
+    set(ruckig_for_primebot_DIR
+        ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/examples/ruckig_for_primebot/lib/cmake/ruckig_for_primebot)
+    find_package(ruckig_for_primebot REQUIRED)
 
-    # 一次性将上述包加入编译树
-    FetchContent_MakeAvailable(aimdk_msgs ruckig_for_primebot)
+    # ── 3. 引入预编译的 OpenCV 4.13.0（按需，用于视频流处理）────────────────
+    # set(OpenCV_DIR
+    #     ${CMAKE_CURRENT_SOURCE_DIR}/cmake/primebot_sdk/examples/opencv/lib/cmake/opencv4)
+    # find_package(OpenCV REQUIRED COMPONENTS core videoio)
     ```
 
 2. **在主配置中调用脚本并链接**：在主项目的顶级 `CMakeLists.txt` 中引入上面写好的模块：
@@ -582,6 +585,10 @@ my_project/
         # 注意：使用 FetchContent 集成时，需显式链接具体的类型支持库以确保运行路径正确
         aimdk_msgs__rosidl_typesupport_cpp
         aimdk_msgs__rosidl_typesupport_fastrtps_cpp
+        # 若需关节轨迹规划，追加预编译 ruckig 库（配合上面的 find_package）：
+        # ruckig_for_primebot::ruckig_for_primebot
+        # 若需视频流处理，追加预编译 OpenCV：
+        # ${OpenCV_LIBS}
     )
 
     ament_package()
