@@ -403,7 +403,7 @@ private:
       auto future = client->async_send_request(request);
       if (rclcpp::spin_until_future_complete(this->shared_from_this(), future, timeout) ==
           rclcpp::FutureReturnCode::SUCCESS) {
-        return future;
+        return future.future.share();
       }
       RCLCPP_INFO(this->get_logger(), "%s attempt %d/%d timed out, retrying...",
                   service_name.c_str(), i + 1, max_retries);
