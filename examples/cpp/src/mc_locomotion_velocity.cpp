@@ -105,7 +105,7 @@ public:
           this->shared_from_this(), future, timeout);
 
       if (retcode == rclcpp::FutureReturnCode::SUCCESS) {
-        return future;
+        return future.future.share();
       }
 
       RCLCPP_INFO(this->get_logger(),

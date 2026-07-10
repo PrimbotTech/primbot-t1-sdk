@@ -1,0 +1,13 @@
+# Package Information for pkg-config
+
+prefix=/workspace/sdk_t1/examples/opencv
+exec_prefix=${prefix}
+libdir=${exec_prefix}/lib
+includedir=${prefix}/include/opencv4
+
+Name: OpenCV
+Description: Open Source Computer Vision Library
+Version: 4.13.0
+Libs: -L${exec_prefix}/lib -lopencv_videoio -lopencv_imgcodecs -lopencv_imgproc -lopencv_core
+Libs.private: -ldl -lm -lpthread -lrt
+Cflags: -I${includedir}
