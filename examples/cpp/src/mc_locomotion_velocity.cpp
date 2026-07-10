@@ -66,14 +66,10 @@ public:
     get_action_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
         "/aimdk_5Fmsgs/srv/GetMcAction");
 
-    // Maximum speed limits
-    max_forward_speed_ = 2.0; // m/s
-    max_lateral_speed_ = 1.0; // m/s
-    max_angular_speed_ = 2.5; // rad/s
     // Minimum speed limits (0 is also OK)
-    min_forward_speed_ = 0.1; // m/s
-    min_lateral_speed_ = 0.3; // m/s
-    min_angular_speed_ = 0.8; // rad/s
+    min_forward_speed_ = 0.2; // m/s
+    min_lateral_speed_ = 0.2; // m/s
+    min_angular_speed_ = 0.2; // rad/s
 
     RCLCPP_INFO(this->get_logger(), "Direct velocity control node started.");
   }
@@ -229,8 +225,7 @@ public:
     if (std::abs(forward) < 0.005) {
       forward_velocity_ = 0.0;
       return true;
-    } else if ((std::abs(forward) > max_forward_speed_) ||
-               (std::abs(forward) < min_forward_speed_)) {
+    } else if (std::abs(forward) < min_forward_speed_) {
       RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
       return false;
     } else {
@@ -243,8 +238,7 @@ public:
     if (std::abs(lateral) < 0.005) {
       lateral_velocity_ = 0.0;
       return true;
-    } else if ((std::abs(lateral) > max_lateral_speed_) ||
-               (std::abs(lateral) < min_lateral_speed_)) {
+    } else if (std::abs(lateral) < min_lateral_speed_) {
       RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
       return false;
     } else {
@@ -257,8 +251,7 @@ public:
     if (std::abs(angular) < 0.005) {
       angular_velocity_ = 0.0;
       return true;
-    } else if ((std::abs(angular) > max_angular_speed_) ||
-               (std::abs(angular) < min_angular_speed_)) {
+    } else if (std::abs(angular) < min_angular_speed_) {
       RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
       return false;
     } else {
@@ -467,10 +460,6 @@ private:
   double lateral_velocity_;
   double angular_velocity_;
 
-  double max_forward_speed_;
-  double max_lateral_speed_;
-  double max_angular_speed_;
-
   double min_forward_speed_;
   double min_lateral_speed_;
   double min_angular_speed_;
@@ -520,17 +509,17 @@ int main(int argc, char *argv[]) {
   // get and check control values
   // notice that mc has thresholds to start movement
   double forward, lateral, angular;
-  std::cout << "Enter forward speed 0 or ±(0.1 ~ 2.0) m/s: ";
+  std::cout << "Enter forward speed 0 or |v| >= 0.2 m/s: ";
   std::cin >> forward;
   if (!node->set_forward(forward)) {
     return 2;
   }
-  std::cout << "Enter lateral speed 0 or ±(0.3 ~ 1.0) m/s: ";
+  std::cout << "Enter lateral speed 0 or |v| >= 0.2 m/s: ";
   std::cin >> lateral;
   if (!node->set_lateral(lateral)) {
     return 2;
   }
-  std::cout << "Enter angular speed 0 or ±(0.8 ~ 2.5) rad/s: ";
+  std::cout << "Enter angular speed 0 or |v| >= 0.2 rad/s: ";
   std::cin >> angular;
   if (!node->set_angular(angular)) {
     return 2;
