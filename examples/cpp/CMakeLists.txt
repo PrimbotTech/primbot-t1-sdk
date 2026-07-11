@@ -8,7 +8,7 @@ set(ruckig_for_primebot_DIR
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(aimdk_msgs REQUIRED)
-find_package(OpenCV REQUIRED COMPONENTS core videoio)
+find_package(OpenCV 4.13.0 EXACT REQUIRED CONFIG COMPONENTS core imgproc imgcodecs videoio)
 find_package(ruckig_for_primebot REQUIRED)
 
 set(EXAMPLE_TARGETS
@@ -40,6 +40,8 @@ foreach(EXAMPLE_TARGET ${EXAMPLE_TARGETS})
   if(EXAMPLE_TARGET STREQUAL "get_video_stream")
     target_include_directories(${EXAMPLE_TARGET} PRIVATE ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(${EXAMPLE_TARGET} ${OpenCV_LIBS})
+    set_target_properties(${EXAMPLE_TARGET} PROPERTIES
+      INSTALL_RPATH "\$ORIGIN/../../../aimdk_opencv/lib;\$ORIGIN/..")
   endif()
 
   if(EXAMPLE_TARGET STREQUAL "joint_control")

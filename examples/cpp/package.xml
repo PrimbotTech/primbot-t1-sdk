@@ -11,6 +11,7 @@
 
   <depend>rclcpp</depend>
   <depend>aimdk_msgs</depend>
+  <depend>aimdk_opencv</depend>
   <depend>opencv4</depend>
   <depend>ruckig_for_primebot</depend>
 
