@@ -128,7 +128,8 @@ class PlayLightsClient(Node):
             request.request = CommonRequest()
             request.request.header.stamp = self.get_clock().now().to_msg()
             request.enable = enable
-            request.brightness = brightness
+            # The server currently does not support neck-light brightness control.
+            # request.brightness = brightness
 
             if enable:
                 self.get_logger().info(
