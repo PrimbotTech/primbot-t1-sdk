@@ -19,8 +19,9 @@ primebot_sdk/
 │   └── mc/                            # 运控层 (动作/轨迹控制/关节)
 └── examples/                          # 场景化例程
     ├── cpp/                           # C++ 示例
+    ├── opencv/                        # OpenCV 4.13.0 源码包（用户本机构建）
     ├── python/                        # Python 示例
-    └── ruckig_for_primebot/           # 关节轨迹规划依赖库 (供 C++/Python 示例使用)
+    └── ruckig_for_primebot/           # Ruckig 源码包（供 C++/Python 示例构建）
 ```
 
 ---

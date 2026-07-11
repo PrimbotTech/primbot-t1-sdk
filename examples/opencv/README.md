@@ -21,7 +21,7 @@ sudo apt install -y cmake build-essential pkg-config \
 colcon build --packages-up-to aimdk_examples_cpp --symlink-install
 ```
 
-`aimdk_opencv` 会先编译 `examples/opencv/opencv-4.13.0` 中的源码，并只构建
+`aimdk_opencv` 会先编译 `examples/opencv/` 中的源码，并只构建
 `core`、`imgproc`、`imgcodecs` 与 `videoio` 模块；随后 `aimdk_examples_cpp` 自动
 链接该版本。构建产物位于工作区的 `build/`、`install/` 和 `log/`，不提交到 SDK。
 
@@ -36,4 +36,4 @@ ros2 run aimdk_examples_cpp get_video_stream --help
 可执行文件带有相对运行时库路径：隔离安装时加载同工作区
 `aimdk_opencv/lib`，合并安装时加载 `install/lib`，不会被系统同名 OpenCV 库替代。
 
-OpenCV 上游许可证见 [opencv-4.13.0/LICENSE](opencv-4.13.0/LICENSE)。
+OpenCV 上游许可证见 [LICENSE](LICENSE)。
