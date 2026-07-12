@@ -43,6 +43,7 @@
 #include <iostream>
 #include <memory>
 #include <signal.h>
+#include <stdexcept>
 #include <thread>
 #include <unordered_map>
 #include <vector>
@@ -66,14 +67,10 @@ public:
     get_action_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
         "/aimdk_5Fmsgs/srv/GetMcAction");
 
-    // Maximum speed limits
-    max_forward_speed_ = 2.0; // m/s
-    max_lateral_speed_ = 1.0; // m/s
-    max_angular_speed_ = 2.5; // rad/s
     // Minimum speed limits (0 is also OK)
-    min_forward_speed_ = 0.1; // m/s
-    min_lateral_speed_ = 0.3; // m/s
-    min_angular_speed_ = 0.8; // rad/s
+    min_forward_speed_ = 0.2; // m/s
+    min_lateral_speed_ = 0.2; // m/s
+    min_angular_speed_ = 0.2; // rad/s
 
     RCLCPP_INFO(this->get_logger(), "Direct velocity control node started.");
   }
@@ -229,10 +226,9 @@ public:
     if (std::abs(forward) < 0.005) {
       forward_velocity_ = 0.0;
       return true;
-    } else if ((std::abs(forward) > max_forward_speed_) ||
-               (std::abs(forward) < min_forward_speed_)) {
-      RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
-      return false;
+    } else if (std::abs(forward) < min_forward_speed_) {
+      throw std::out_of_range(
+          "forward speed must be 0 or have an absolute value of at least 0.2 m/s");
     } else {
       forward_velocity_ = forward;
       return true;
@@ -243,10 +239,9 @@ public:
     if (std::abs(lateral) < 0.005) {
       lateral_velocity_ = 0.0;
       return true;
-    } else if ((std::abs(lateral) > max_lateral_speed_) ||
-               (std::abs(lateral) < min_lateral_speed_)) {
-      RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
-      return false;
+    } else if (std::abs(lateral) < min_lateral_speed_) {
+      throw std::out_of_range(
+          "lateral speed must be 0 or have an absolute value of at least 0.2 m/s");
     } else {
       lateral_velocity_ = lateral;
       return true;
@@ -257,10 +252,9 @@ public:
     if (std::abs(angular) < 0.005) {
       angular_velocity_ = 0.0;
       return true;
-    } else if ((std::abs(angular) > max_angular_speed_) ||
-               (std::abs(angular) < min_angular_speed_)) {
-      RCLCPP_ERROR(this->get_logger(), "input value out of range, exiting");
-      return false;
+    } else if (std::abs(angular) < min_angular_speed_) {
+      throw std::out_of_range(
+          "angular speed must be 0 or have an absolute value of at least 0.2 rad/s");
     } else {
       angular_velocity_ = angular;
       return true;
@@ -467,10 +461,6 @@ private:
   double lateral_velocity_;
   double angular_velocity_;
 
-  double max_forward_speed_;
-  double max_lateral_speed_;
-  double max_angular_speed_;
-
   double min_forward_speed_;
   double min_lateral_speed_;
   double min_angular_speed_;
@@ -517,47 +507,58 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // get and check control values
-  // notice that mc has thresholds to start movement
-  double forward, lateral, angular;
-  std::cout << "Enter forward speed 0 or ±(0.1 ~ 2.0) m/s: ";
-  std::cin >> forward;
-  if (!node->set_forward(forward)) {
-    return 2;
-  }
-  std::cout << "Enter lateral speed 0 or ±(0.3 ~ 1.0) m/s: ";
-  std::cin >> lateral;
-  if (!node->set_lateral(lateral)) {
-    return 2;
-  }
-  std::cout << "Enter angular speed 0 or ±(0.8 ~ 2.5) rad/s: ";
-  std::cin >> angular;
-  if (!node->set_angular(angular)) {
-    return 2;
-  }
-
-  RCLCPP_INFO(node->get_logger(),
-              "Start publishing velocity for 5 seconds: Forward %.2f m/s, "
-              "Lateral %.2f m/s, Angular %.2f rad/s",
-              forward, lateral, angular);
-
-  node->start_publish();
-
-  auto start_time = node->now();
-  bool queried_after_publish = false;
-  while ((node->now() - start_time).seconds() < 5.0) {
-    if (!queried_after_publish &&
-        (node->now() - start_time).seconds() > 1.0) {
-      node->get_current_input_source();
-      queried_after_publish = true;
+  try {
+    // Get and check control values. MC enforces thresholds before movement.
+    double forward, lateral, angular;
+    std::cout << "Enter forward speed 0 or |v| >= 0.2 m/s: ";
+    if (!(std::cin >> forward)) {
+      throw std::invalid_argument("forward speed must be a number");
     }
-    rclcpp::spin_some(node);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
+    node->set_forward(forward);
 
-  node->clear_velocity();
-  node->publish_velocity();
-  RCLCPP_INFO(node->get_logger(), "5 seconds elapsed; robot stopped");
+    std::cout << "Enter lateral speed 0 or |v| >= 0.2 m/s: ";
+    if (!(std::cin >> lateral)) {
+      throw std::invalid_argument("lateral speed must be a number");
+    }
+    node->set_lateral(lateral);
+
+    std::cout << "Enter angular speed 0 or |v| >= 0.2 rad/s: ";
+    if (!(std::cin >> angular)) {
+      throw std::invalid_argument("angular speed must be a number");
+    }
+    node->set_angular(angular);
+
+    RCLCPP_INFO(node->get_logger(),
+                "Start publishing velocity for 5 seconds: Forward %.2f m/s, "
+                "Lateral %.2f m/s, Angular %.2f rad/s",
+                forward, lateral, angular);
+
+    node->start_publish();
+
+    auto start_time = node->now();
+    bool queried_after_publish = false;
+    while ((node->now() - start_time).seconds() < 5.0) {
+      if (!queried_after_publish &&
+          (node->now() - start_time).seconds() > 1.0) {
+        node->get_current_input_source();
+        queried_after_publish = true;
+      }
+      rclcpp::spin_some(node);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    node->clear_velocity();
+    node->publish_velocity();
+    RCLCPP_INFO(node->get_logger(), "5 seconds elapsed; robot stopped");
+  } catch (const std::exception &error) {
+    RCLCPP_ERROR(node->get_logger(), "Invalid velocity input: %s", error.what());
+    node->clear_velocity();
+    node->publish_velocity();
+    node->release_input_source();
+    g_node.reset();
+    rclcpp::shutdown();
+    return 2;
+  }
 
   // Step 6: Release input source
   node->release_input_source();

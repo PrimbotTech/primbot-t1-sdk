@@ -163,7 +163,8 @@ public:
       request->request = aimdk_msgs::msg::CommonRequest();
       request->request.header.stamp = this->now();
       request->enable = enable;
-      request->brightness = brightness;
+      // The server currently does not support neck-light brightness control.
+      // request->brightness = brightness;
 
       if (enable) {
         RCLCPP_INFO(this->get_logger(), "Sending SetNeckLight: enable=%s, brightness=%u%%",

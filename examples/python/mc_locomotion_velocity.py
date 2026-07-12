@@ -63,13 +63,9 @@ class DirectVelocityControl(Node):
         self.lateral_velocity = 0.0
         self.angular_velocity = 0.0
 
-        self.max_forward_speed = 2.0
-        self.max_lateral_speed = 1.0
-        self.max_angular_speed = 2.5
-
-        self.min_forward_speed = 0.1
-        self.min_lateral_speed = 0.3
-        self.min_angular_speed = 0.8
+        self.min_forward_speed = 0.2
+        self.min_lateral_speed = 0.2
+        self.min_angular_speed = 0.2
 
         self.timer = None
 
@@ -356,7 +352,7 @@ class DirectVelocityControl(Node):
         if abs(forward) < 0.005:
             self.forward_velocity = 0.0
             return True
-        if abs(forward) > self.max_forward_speed or abs(forward) < self.min_forward_speed:
+        if abs(forward) < self.min_forward_speed:
             self.get_logger().error("Input forward value out of range, exiting")
             return False
         self.forward_velocity = forward
@@ -366,7 +362,7 @@ class DirectVelocityControl(Node):
         if abs(lateral) < 0.005:
             self.lateral_velocity = 0.0
             return True
-        if abs(lateral) > self.max_lateral_speed or abs(lateral) < self.min_lateral_speed:
+        if abs(lateral) < self.min_lateral_speed:
             self.get_logger().error("Input lateral value out of range, exiting")
             return False
         self.lateral_velocity = lateral
@@ -376,7 +372,7 @@ class DirectVelocityControl(Node):
         if abs(angular) < 0.005:
             self.angular_velocity = 0.0
             return True
-        if abs(angular) > self.max_angular_speed or abs(angular) < self.min_angular_speed:
+        if abs(angular) < self.min_angular_speed:
             self.get_logger().error("Input angular value out of range, exiting")
             return False
         self.angular_velocity = angular
@@ -438,9 +434,9 @@ def main(args=None):
         # Input speed must be 0, or have an absolute value at least the minimum threshold.
         try:
             print("\nEnter control velocities (forward and lateral in m/s, angular in rad/s):")
-            forward = float(input("Enter forward speed 0 or +/- (0.1 ~ 2.0) m/s: "))
-            lateral = float(input("Enter lateral speed 0 or +/- (0.3 ~ 1.0) m/s: "))
-            angular = float(input("Enter angular speed 0 or +/- (0.8 ~ 2.5) rad/s: "))
+            forward = float(input("Enter forward speed 0 or |v| >= 0.2 m/s: "))
+            lateral = float(input("Enter lateral speed 0 or |v| >= 0.2 m/s: "))
+            angular = float(input("Enter angular speed 0 or |v| >= 0.2 rad/s: "))
         except ValueError as exc:
             node.get_logger().error(f"Invalid input: {exc}")
             return 2

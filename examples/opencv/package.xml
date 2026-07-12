@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>aimdk_opencv</name>
+  <version>4.13.0</version>
+  <description>OpenCV 4.13.0 source build for PrimeBot SDK examples.</description>
+  <maintainer email="sdk@primebot.com">Primebot Team</maintainer>
+  <license>Apache License 2.0</license>
+
+  <buildtool_depend>cmake</buildtool_depend>
+
+  <build_depend>ffmpeg</build_depend>
+  <exec_depend>ffmpeg</exec_depend>
+
+  <export>
+    <build_type>cmake</build_type>
+  </export>
+</package>
