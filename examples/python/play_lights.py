@@ -4,7 +4,7 @@
 
 Description:
   This script demonstrates how to control the robot's LED strip lights using the
-  LedStripCommand service. Supports setting LED strip mode, color (RGB), and brightness.
+  LedStripCommand service. Supports setting LED strip mode and color (RGB).
 
 Prerequisites:
   - LedStripCommand service must be available
@@ -119,9 +119,8 @@ class PlayLightsClient(Node):
     # 设置颈部灯光
     # 参数:
     #   enable: 开关 (True=开启, False=关闭)
-    #   brightness: 亮度 (0-100 百分比)
     # 返回: bool - 请求是否成功
-    def set_neck_light(self, enable: bool, brightness: int) -> bool:
+    def set_neck_light(self, enable: bool) -> bool:
         try:
             # 创建服务请求对象
             request = SetNeckLight.Request()
@@ -131,14 +130,9 @@ class PlayLightsClient(Node):
             # The server currently does not support neck-light brightness control.
             # request.brightness = brightness
 
-            if enable:
-                self.get_logger().info(
-                    f"Sending SetNeckLight request: enable={enable}, brightness={brightness}%"
-                )
-            else:
-                self.get_logger().info(
-                    f"Sending SetNeckLight request: enable={enable}"
-                )
+            self.get_logger().info(
+                f"Sending SetNeckLight request: enable={enable}"
+            )
 
             # 重试机制：最多重试 3 次
             for i in range(3):
@@ -272,24 +266,23 @@ def main(args=None):
                     rclpy.shutdown()
                 return 1
             
-            # Only prompt for brightness when light is enabled
-            brightness = 50
-            if enable:
-                brightness = read_int("  Brightness (0-100, default 50): ", 50)
-                
-                # Validate brightness range
-                if brightness < 0 or brightness > 100:
-                    print("\n✗ Brightness must be in range 0-100")
-                    if node is not None:
-                        node.destroy_node()
-                    if rclpy.ok():
-                        rclpy.shutdown()
-                    return 1
+            # Brightness input is disabled until the service supports brightness control.
+            # brightness = 50
+            # if enable:
+            #     brightness = read_int("  Brightness (0-100, default 50): ", 50)
+            #
+            #     if brightness < 0 or brightness > 100:
+            #         print("\n✗ Brightness must be in range 0-100")
+            #         if node is not None:
+            #             node.destroy_node()
+            #         if rclpy.ok():
+            #             rclpy.shutdown()
+            #         return 1
             
-            ok = node.set_neck_light(enable, brightness)
+            ok = node.set_neck_light(enable)
             if ok:
                 if enable:
-                    print(f"\n✓ Neck light enabled, brightness {brightness}%")
+                    print("\n✓ Neck light enabled")
                 else:
                     print("\n✓ Neck light disabled")
                 

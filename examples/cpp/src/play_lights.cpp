@@ -5,7 +5,7 @@
    Demonstrates how to control the LED strip and neck light using the
    LedStripCommand and SetNeckLight services. The example provides an
    interactive menu for selecting LED strip mode, custom RGB values, blink or
-   breath period, neck light enable state, and brightness.
+   breath period, and neck light enable state.
 
  Prerequisites:
    - Robot light control services must be running.
@@ -157,7 +157,7 @@ public:
     }
   }
 
-  bool set_neck_light(bool enable, uint8_t brightness) {
+  bool set_neck_light(bool enable) {
     try {
       auto request = std::make_shared<aimdk_msgs::srv::SetNeckLight::Request>();
       request->request = aimdk_msgs::msg::CommonRequest();
@@ -166,13 +166,8 @@ public:
       // The server currently does not support neck-light brightness control.
       // request->brightness = brightness;
 
-      if (enable) {
-        RCLCPP_INFO(this->get_logger(), "Sending SetNeckLight: enable=%s, brightness=%u%%",
-                    enable ? "true" : "false", brightness);
-      } else {
-        RCLCPP_INFO(this->get_logger(), "Sending SetNeckLight: enable=%s",
-                    enable ? "true" : "false");
-      }
+      RCLCPP_INFO(this->get_logger(), "Sending SetNeckLight: enable=%s",
+                  enable ? "true" : "false");
 
       // Retry mechanism: up to 3 attempts
       auto future = neck_client_->async_send_request(request);
@@ -381,25 +376,24 @@ int main(int argc, char *argv[]) {
         return 1;
       }
       
-      // Only prompt for brightness when light is enabled
-      int brightness = 50;
-      if (enable) {
-        std::cout << "  Brightness (0-100, default 50): ";
-        std::cin >> brightness;
-        
-        // Validate brightness range
-        if (brightness < 0 || brightness > 100) {
-          std::cout << "\n✗ Brightness must be in range 0-100" << std::endl;
-          g_node.reset();
-          rclcpp::shutdown();
-          return 1;
-        }
-      }
+      // Brightness input is disabled until the service supports brightness control.
+      // int brightness = 50;
+      // if (enable) {
+      //   std::cout << "  Brightness (0-100, default 50): ";
+      //   std::cin >> brightness;
+      //
+      //   if (brightness < 0 || brightness > 100) {
+      //     std::cout << "\n✗ Brightness must be in range 0-100" << std::endl;
+      //     g_node.reset();
+      //     rclcpp::shutdown();
+      //     return 1;
+      //   }
+      // }
       
-      ok = client->set_neck_light(enable, static_cast<uint8_t>(brightness));
+      ok = client->set_neck_light(enable);
       if (ok) {
         if (enable) {
-          std::cout << "\n✓ Neck light enabled, brightness " << brightness << "%" << std::endl;
+          std::cout << "\n✓ Neck light enabled" << std::endl;
         } else {
           std::cout << "\n✓ Neck light disabled" << std::endl;
         }
