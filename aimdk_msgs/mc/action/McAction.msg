@@ -152,6 +152,9 @@ int32 BIPED_LOCOMOTION_ANIMATION = 301
 # 双足控制上肢录制模式
 int32 BIPED_RECORD_UPPER = 302
 
+# 双足 gimbal 轨迹移动模式
+int32 BIPED_GIMBAL = 303
+
 # 双足转圈
 int32 BIPED_MIMIC_ROTATE_DANCE = 400 
 
