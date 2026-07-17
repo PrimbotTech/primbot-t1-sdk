@@ -194,8 +194,11 @@ class GetNeckLightStateSubscriber(Node):
     def state_callback(self, msg):
         self.current_state = msg  # Save the state
         if msg.enable:
+            # self.get_logger().info(
+            #     f'State updated: enable={msg.enable}, brightness={msg.brightness}'
+            # )
             self.get_logger().info(
-                f'State updated: enable={msg.enable}, brightness={msg.brightness}'
+                f'State updated: enable={msg.enable}'
             )
         if not msg.enable:
             self.get_logger().info(
@@ -293,7 +296,8 @@ def main(args=None):
                     if state_subscriber.current_state:
                         state = state_subscriber.current_state
                         if state.enable:
-                            print(f"Current state: enable={state.enable}, brightness={state.brightness}")
+                            # print(f"Current state: enable={state.enable}, brightness={state.brightness}")
+                            print(f"Current state: enable={state.enable}")
                         else:
                             print(f"Current state: enable={state.enable}")
                         break

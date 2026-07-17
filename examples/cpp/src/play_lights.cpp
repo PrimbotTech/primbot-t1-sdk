@@ -261,8 +261,10 @@ private:
   void state_callback(const aimdk_msgs::msg::NeckLightState::SharedPtr msg) {
     current_state_ = msg;
     if (msg->enable) {
-      RCLCPP_INFO(this->get_logger(), "State updated: enable=%d, brightness=%d", 
-                  msg->enable, msg->brightness);
+      // RCLCPP_INFO(this->get_logger(), "State updated: enable=%d, brightness=%d", 
+      //             msg->enable, msg->brightness);
+      RCLCPP_INFO(this->get_logger(), "State updated: enable=%d", 
+                  msg->enable);
     }
     if (!msg->enable) {
       RCLCPP_INFO(this->get_logger(), "State updated: enable=%d", msg->enable);
@@ -408,8 +410,9 @@ int main(int argc, char *argv[]) {
           if (state_subscriber->current_state_) {
             auto state = state_subscriber->current_state_;
             if (state->enable) {
-              std::cout << "Current state: enable=" << state->enable 
-                       << ", brightness=" << static_cast<int>(state->brightness) << std::endl;
+              // std::cout << "Current state: enable=" << state->enable 
+              //          << ", brightness=" << static_cast<int>(state->brightness) << std::endl;
+              std::cout << "Current state: enable=" << state->enable << std::endl;
             } else {
               std::cout << "Current state: enable=" << state->enable << std::endl;
             }
