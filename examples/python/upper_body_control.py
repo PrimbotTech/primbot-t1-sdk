@@ -29,7 +29,6 @@ from aimdk_msgs.srv import GetMcAction, SetMcAction
 from aimdk_msgs.msg import (
     CommonRequest,
     JointCommand,
-    JointStateArray,
     McAction,
     McActionCommand,
     McActionStatus,
@@ -38,7 +37,7 @@ from aimdk_msgs.msg import (
 )
 
 
-PUBLISH_RATE_HZ = 1000.0
+PUBLISH_RATE_HZ = 100.0
 DEFAULT_STIFFNESS = 20.0
 DEFAULT_DAMPING = 3.0
 
@@ -95,17 +94,12 @@ class CustomUpperControlNode(Node):
             GetMcAction, "/aimdk_5Fmsgs/srv/GetMcAction"
         )
 
-        self.initial_positions: Optional[Dict[str, float]] = None
         self.current_demo_pose = self.default_stand_positions()
         self.sequence = 0
 
         self.get_logger().info(
             "custom_upper_control started. Make sure MC is running. The robot "
             "will auto-transition to BIPED_CUSTOM_UPPER before publishing commands."
-        )
-    def startsub(self):
-        self.state_sub = self.create_subscription(
-            JointStateArray, "/aima/hal/joint/state", self.on_joint_state, self.qos
         )
     def get_action_desc(self) -> Optional[str]:
         request = GetMcAction.Request()
@@ -190,20 +184,6 @@ class CustomUpperControlNode(Node):
 
         return True
 
-    def on_joint_state(self, msg: JointStateArray) -> None:
-        if self.initial_positions is not None:
-            return
-
-        state_by_name = {joint.name: joint.position for joint in msg.joints}
-        captured = {}
-        for name in JOINT_NAMES:
-            if name not in state_by_name:
-                return
-            captured[name] = state_by_name[name]
-
-        self.initial_positions = captured
-        self.get_logger().info("Received initial state for all custom upper joints.")
-
     def default_stand_positions(self) -> Dict[str, float]:
         return dict(zip(JOINT_NAMES, DEFAULT_STAND_POSITIONS))
 
@@ -284,14 +264,10 @@ class CustomUpperControlNode(Node):
         return True
 
     def run_demo(self) -> bool:
-        if self.initial_positions is None:
-            self.get_logger().error("Initial joint state is not ready.")
-            return False
-
         stand_pose = self.default_stand_positions()
 
-        self.get_logger().info("Moving from current posture to default upper posture.")
-        if not self.publish_interpolation(self.initial_positions, stand_pose, 2.0):
+        self.get_logger().info("Moving to default upper posture.")
+        if not self.publish_interpolation(self.current_demo_pose, stand_pose, 2.0):
             return False
 
         wave_start = self.wave_pose(stand_pose, 0.0)
@@ -327,25 +303,10 @@ def main() -> int:
             ret = 1
         else:
             time.sleep(1)
-            node.startsub()
-            deadline = time.monotonic() + 10.0
-            while (
-                rclpy.ok()
-                and not g_stop
-                and node.initial_positions is None
-                and time.monotonic() < deadline
-            ):
-                rclpy.spin_once(node, timeout_sec=0.01)
-
-            if node.initial_positions is None:
-                node.get_logger().error(
-                    "Timed out waiting for /aima/hal/joint/state with all custom upper joints."
-                )
-                ret = 1
-            elif not g_stop and not node.run_demo():
+            if not g_stop and not node.run_demo():
                 ret = 0 if g_stop else 1
 
-            if rclpy.ok() and node.initial_positions is not None:
+            if rclpy.ok():
                 node.publish_default_for_shutdown()
     finally:
         node.destroy_node()

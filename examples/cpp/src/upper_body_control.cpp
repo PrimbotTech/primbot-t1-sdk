@@ -15,9 +15,7 @@
  */
 
 #include "aimdk_msgs/msg/common_request.hpp"
-#include "aimdk_msgs/msg/common_state.hpp"
 #include "aimdk_msgs/msg/joint_command.hpp"
-#include "aimdk_msgs/msg/joint_state_array.hpp"
 #include "aimdk_msgs/msg/mc_action_command.hpp"
 #include "aimdk_msgs/msg/mc_action_status.hpp"
 #include "aimdk_msgs/msg/mc_custom_joint_command.hpp"
@@ -32,19 +30,15 @@
 #include <chrono>
 #include <cmath>
 #include <csignal>
-#include <functional>
 #include <map>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 namespace {
 
-constexpr double kPublishRateHz = 1000.0;
+constexpr double kPublishRateHz = 100.0;
 constexpr double kDefaultStiffness = 20.0;
 constexpr double kDefaultDamping = 3.0;
 constexpr double kPi = 3.14159265358979323846;
@@ -106,24 +100,6 @@ class CustomUpperControlNode : public rclcpp::Node
         this->get_logger(),
         "custom_upper_control started. Make sure MC is running. The robot "
         "will auto-transition to BIPED_CUSTOM_UPPER before publishing commands.");
-  }
-
-  void start_subscription()
-  {
-    auto qos = rclcpp::QoS(rclcpp::KeepLast(10));
-    qos.best_effort();
-    qos.durability_volatile();
-
-    state_sub_ = this->create_subscription<aimdk_msgs::msg::JointStateArray>(
-        "/aima/hal/joint/state", qos,
-        std::bind(&CustomUpperControlNode::on_joint_state, this,
-                  std::placeholders::_1));
-  }
-
-  bool has_initial_state() const
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return initial_state_ready_;
   }
 
   std::string get_action_desc()
@@ -251,12 +227,11 @@ class CustomUpperControlNode : public rclcpp::Node
 
   bool run_demo()
   {
-    const auto initial = initial_positions();
     const auto stand = default_stand_positions();
 
     RCLCPP_INFO(this->get_logger(),
-                "Moving from current posture to default upper posture.");
-    if (!publish_interpolation(initial, stand, 2.0)) {
+                "Holding configured default upper posture.");
+    if (!publish_hold(stand, 1.0)) {
       return false;
     }
 
@@ -290,39 +265,6 @@ class CustomUpperControlNode : public rclcpp::Node
 
  private:
   using Pose = std::map<std::string, double>;
-
-  void on_joint_state(const aimdk_msgs::msg::JointStateArray::SharedPtr msg)
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (initial_state_ready_) {
-      return;
-    }
-
-    std::unordered_map<std::string, double> state_by_name;
-    for (const auto &joint : msg->joints) {
-      state_by_name[joint.name] = joint.position;
-    }
-
-    Pose captured;
-    for (const auto &name : kJointNames) {
-      auto it = state_by_name.find(name);
-      if (it == state_by_name.end()) {
-        return;
-      }
-      captured[name] = it->second;
-    }
-
-    initial_positions_ = std::move(captured);
-    initial_state_ready_ = true;
-    RCLCPP_INFO(this->get_logger(),
-                "Received initial state for all custom upper joints.");
-  }
-
-  Pose initial_positions() const
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    return initial_positions_;
-  }
 
   Pose default_stand_positions() const
   {
@@ -440,14 +382,10 @@ class CustomUpperControlNode : public rclcpp::Node
   }
 
   rclcpp::Publisher<aimdk_msgs::msg::McCustomJointCommand>::SharedPtr command_pub_;
-  rclcpp::Subscription<aimdk_msgs::msg::JointStateArray>::SharedPtr state_sub_;
   rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr set_action_client_;
   rclcpp::Client<aimdk_msgs::srv::GetMcAction>::SharedPtr get_action_client_;
   aimdk_msgs::msg::McCustomJointCommand command_msg_;
 
-  mutable std::mutex mutex_;
-  bool initial_state_ready_ = false;
-  Pose initial_positions_;
   Pose current_demo_pose_;
   uint32_t sequence_ = 0;
 };
@@ -466,29 +404,13 @@ int main(int argc, char *argv[])
       ret = 1;
     } else {
       std::this_thread::sleep_for(std::chrono::seconds(1));
-      node->start_subscription();
-
-      const auto deadline =
-          std::chrono::steady_clock::now() + std::chrono::seconds(10);
-      while (rclcpp::ok() && !g_stop.load() && !node->has_initial_state() &&
-             std::chrono::steady_clock::now() < deadline) {
-        rclcpp::spin_some(node);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-      }
-
-      if (!node->has_initial_state()) {
-        RCLCPP_ERROR(
-            node->get_logger(),
-            "Timed out waiting for /aima/hal/joint/state with all custom "
-            "upper joints.");
-        ret = 1;
-      } else if (!g_stop.load()) {
+      if (!g_stop.load()) {
         if (!node->run_demo()) {
           ret = g_stop.load() ? 0 : 1;
         }
       }
 
-      if (rclcpp::ok() && node->has_initial_state()) {
+      if (rclcpp::ok()) {
         node->publish_default_for_shutdown();
       }
     }
