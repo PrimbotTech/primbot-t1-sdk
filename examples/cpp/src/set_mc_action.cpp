@@ -2,17 +2,16 @@
  @brief Action Switch Example Script
  
  Description:
-   This script demonstrates how to call the SetMcAction service to switch robot
-   action states. Uses BFS on ACTION_GRAPH to automatically navigate the state
-   machine transition path from the current action to the target action.
+   This script demonstrates how to switch robot action states through the
+   shared McActionSwitcher state-machine interface.
  
  Prerequisites:
    - Robot motion control service must be running
    - SetMcAction and GetMcAction services must be available
  
  Usage:
-   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action \
-   [-p action_desc:=<ACTION>]
+   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=<TYPE> \
+   [-p action_desc:=<ACTION>] [-p motion:=<MOTION>]
  
  Example:
    # Interactive mode: input target action via terminal
@@ -21,19 +20,22 @@
    # Non-interactive mode: specify action via parameter
    ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=action \
    -p action_desc:=QUADRUPED_LOCOMOTION_JUMP
+
+   # Motion mode: switch to the matching biped/quadruped locomotion action first
+   ros2 run aimdk_examples_cpp set_mc_action --ros-args -p type:=motion \
+   -p motion:=<MOTION>
  
  Parameters:
-   - type: "action" or "motion", required (motion currently disabled)
+   - type: "action" or "motion", required
    - action_desc: string, optional; if set, skips interactive input and executes directly
-   - motion: string, required when type=motion
-   - interrupt: bool, optional when type=motion, default=true
+   - motion: string, required when type=motion; BIPED_* and QUAD_* names are
+     routed to the corresponding whole-body action automatically
  
  Notes:
-   - Single Switch: Switches to target action, holds for 2s, then auto-returns to QUADRUPED_LOCOMOTION_DEFAULT.
-   - Auto Path: BFS finds shortest transition path on ACTION_GRAPH, skipping redundant steps.
-   - Recovery: Handles DAMPING_DEFAULT by recovering to PASSIVE_DEFAULT first.
-   - Retry: Each path step retries up to 5 times if the robot is still moving.
-   - Ctrl+C Safety: During execution, Ctrl+C navigates back to QUADRUPED_LOCOMOTION_DEFAULT before exit.
+   - Single Switch: Switches to the requested target action and waits for completion.
+   - Auto Path: McActionSwitcher finds and executes a valid transition path.
+   - Recovery: McActionSwitcher handles intermediate and automatic transitions.
+   - Retry: McActionSwitcher waits for each requested action to become active.
    - WARNING: Do NOT use QUADRUPED_LOCOMOTION_JUMP for testing — the robot will jump and may cause injury or damage.
  */
 #include "aimdk_msgs/msg/common_request.hpp"
@@ -42,103 +44,36 @@
 #include "aimdk_msgs/srv/get_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_action.hpp"
 #include "aimdk_msgs/srv/set_mc_motion.hpp"
+#include "mc_action_switcher.hpp"
 #include "rclcpp/rclcpp.hpp"
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
-#include <deque>
 #include <memory>
 #include <signal.h>
 #include <string>
 #include <thread>
-#include <unordered_map>
-#include <unordered_set>
-#include <vector>
 
 constexpr double kServiceCallTimeoutSec = 2.0;
 constexpr int kMaxRetryCount = 3;
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;
-bool g_shutdown_requested = false;
+std::atomic_bool g_shutdown_requested{false};
 
 void signal_handler(int signal) {
+  const bool already_requested = g_shutdown_requested.exchange(true);
+  if (already_requested) {
+    rclcpp::shutdown();
+    return;
+  }
+
   if (g_node) {
-    RCLCPP_INFO(g_node->get_logger(),
-                "Received signal %d, will navigate back before shutdown.",
+    RCLCPP_WARN(g_node->get_logger(),
+                "Received signal %d, cancelling the current action switch.",
                 signal);
   }
-  g_shutdown_requested = true;
 }
-
-// T1狗形状态机有向图（基于 qd1_t1d5/action_ruler.yaml 及状态机流程图）
-// 定义状态间的合法转换边，navigate_to_action 使用 BFS 自动寻路
-// 所有四足目标状态统一经过 QUADRUPED_LOCOMOTION_DEFAULT 后跳转
-// 所有双足目标状态统一经过 BIPED_LOCOMOTION_WBC 后跳转
-const std::unordered_map<std::string, std::vector<std::string>> ACTION_GRAPH = {
-    {"PASSIVE_DEFAULT",
-     {"QUADRUPED_STAND_DEFAULT", "QUADRUPED_GET_DOWN_DEFAULT",
-      "QUADRUPED_SIT_DOWN_DEFAULT", "QUADRUPED_RECOVERY",
-      "DAMPING_DEFAULT"}},
-    {"QUADRUPED_STAND_DEFAULT",
-     {"QUADRUPED_LOCOMOTION_DEFAULT", "QUADRUPED_GET_DOWN_DEFAULT",
-      "QUADRUPED_SIT_DOWN_DEFAULT", "QUADRUPED_LOCOMOTION_TERRAIN",
-      "QUADRUPED_LOCOMOTION_RUN"}},
-    {"QUADRUPED_LOCOMOTION_DEFAULT",
-     {"QUADRUPED_LOCOMOTION_TERRAIN", "QUADRUPED_LOCOMOTION_RUN",
-      "QUADRUPED_LOCOMOTION_BIONIC", "QUADRUPED_LOCOMOTION_PRIDE",
-      "QUADRUPED_LOCOMOTION_PLEASURE", "QUADRUPED_LOCOMOTION_JUMP",
-      "QUADRUPED_LOCOMOTION_HANDSHAKE", "QUADRUPED_LOCOMOTION_STRETCH",
-      "QUADRUPED_LOCOMOTION_DANCE", "QUADRUPED_LOCOMOTION_FRONTFLIP",
-      "QUADRUPED_LOCOMOTION_BACKFLIP", "QUADRUPED_TO_BIPED",
-      "QUADRUPED_TO_BIPED_ROTATE", "QUADRUPED_TO_BIPED_FRONTFLIP",
-      "QUADRUPED_STAND_DEFAULT"}},
-    {"BIPED_LOCOMOTION_WBC",
-     {"BIPED_LOCOMOTION_DEFAULT", "BIPED_LOCOMOTION_TERRAIN",
-      "BIPED_LOCOMOTION_RUN", "BIPED_TO_QUADRUPED",
-      "BIPED_TO_QUADRUPED_ROTATE", "BIPED_TO_QUADRUPED_FRONTFLIP",
-      "BIPED_LOCOMOTION_ROTATE_LOCAL", "BIPED_LOCOMOTION_BACKBEND",
-      "BIPED_LOCOMOTION_MOONWALK"}},
-    {"BIPED_LOCOMOTION_DEFAULT",
-     {"BIPED_LOCOMOTION_WBC", "BIPED_LOCOMOTION_TERRAIN",
-      "BIPED_LOCOMOTION_RUN", "BIPED_LOCOMOTION_ROTATE_LOCAL",
-      "BIPED_LOCOMOTION_BACKBEND", "BIPED_LOCOMOTION_MOONWALK"}},
-     // ── 四足趴下/坐下 → 回到 四足位控站立 ──
-    {"QUADRUPED_GET_DOWN_DEFAULT", {"QUADRUPED_STAND_DEFAULT"}},
-    {"QUADRUPED_SIT_DOWN_DEFAULT", {"QUADRUPED_STAND_DEFAULT"}},
-    // ── 四足技能/基础运动 → 回到 LOCOMOTION ──
-    {"QUADRUPED_LOCOMOTION_TERRAIN", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_RUN", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    // ── 双足基础运动 → 回到 WBC ──
-    {"BIPED_LOCOMOTION_TERRAIN", {"BIPED_LOCOMOTION_WBC"}},
-    {"BIPED_LOCOMOTION_RUN", {"BIPED_LOCOMOTION_WBC"}},
-    // ── 双足技能运动 → 回到 WBC ──
-    {"BIPED_LOCOMOTION_ROTATE_LOCAL", {"BIPED_LOCOMOTION_WBC"}},
-    {"BIPED_LOCOMOTION_BACKBEND", {"BIPED_LOCOMOTION_WBC"}},
-    {"BIPED_LOCOMOTION_MOONWALK", {"BIPED_LOCOMOTION_WBC"}},
-
-    // ── 自动切换边（系统自动完成，navigate_to_action 会确认状态而非重设） ──
-    {"QUADRUPED_RECOVERY", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_TO_BIPED", {"BIPED_LOCOMOTION_WBC"}},
-    {"QUADRUPED_TO_BIPED_ROTATE", {"BIPED_LOCOMOTION_WBC"}},
-    {"QUADRUPED_TO_BIPED_FRONTFLIP", {"BIPED_LOCOMOTION_WBC"}},
-    {"BIPED_TO_QUADRUPED", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"BIPED_TO_QUADRUPED_ROTATE", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"BIPED_TO_QUADRUPED_FRONTFLIP", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_BIONIC", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_PRIDE", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_PLEASURE", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_JUMP", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_HANDSHAKE", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_STRETCH", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_DANCE", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_FRONTFLIP", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-    {"QUADRUPED_LOCOMOTION_BACKFLIP", {"QUADRUPED_LOCOMOTION_DEFAULT"}},
-};
-
-// 需要先恢复到 PASSIVE_DEFAULT 的状态（这些状态无法直接跳转到其他路径）
-const std::unordered_map<std::string, std::string> RECOVERY_TO_PASSIVE = {
-    {"DAMPING_DEFAULT", "PASSIVE_DEFAULT"},
-};
 
 class SetMcActionClient : public rclcpp::Node {
 public:
@@ -146,26 +81,40 @@ public:
     type_ = this->declare_parameter<std::string>("type", "");
     action_desc_ = this->declare_parameter<std::string>("action_desc", "");
     motion_ = this->declare_parameter<std::string>("motion", "");
-    interrupt_ = this->declare_parameter<bool>("interrupt", true);
-
-    set_action_client_ = this->create_client<aimdk_msgs::srv::SetMcAction>(
-        "/aimdk_5Fmsgs/srv/SetMcAction");
     set_motion_client_ = this->create_client<aimdk_msgs::srv::SetMcMotion>(
         "/aimdk_5Fmsgs/srv/SetMcMotion");
     get_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
         "/aimdk_5Fmsgs/srv/GetMcAction");
     RCLCPP_INFO(this->get_logger(),
                 "SetMcAction client node created with type=%s action_desc=%s "
-                "motion=%s interrupt=%s",
-                type_.c_str(), action_desc_.c_str(), motion_.c_str(),
-                interrupt_ ? "true" : "false");
+                "motion=%s",
+                type_.c_str(), action_desc_.c_str(), motion_.c_str());
   }
 
   struct ActionInfo {
-    int32_t action_id = 0;
     std::string action_desc;
     int32_t status = aimdk_msgs::msg::McActionStatus::IDLE;
   };
+
+  bool switch_action(const std::string &target_action) {
+    aimdk_examples::McActionSwitcher switcher(shared_from_this());
+    aimdk_examples::McActionSwitchOptions options;
+    options.source = "set_mc_action_node";
+    options.total_timeout = std::chrono::seconds(30);
+    options.should_cancel = []() {
+      return g_shutdown_requested.load();
+    };
+
+    const auto result = switcher.switch_to(target_action, options);
+    if (!result.success) {
+      RCLCPP_ERROR(
+          this->get_logger(),
+          "Failed to switch from %s to %s: %s",
+          result.current_action.empty() ? "(unknown)" : result.current_action.c_str(),
+          target_action.c_str(), result.message.c_str());
+    }
+    return result.success;
+  }
 
   bool execute() {
     if (!validate_parameters()) return false;
@@ -188,155 +137,46 @@ public:
         target_action = action_desc_;
       }
 
-      // Execute SetMcAction (single switch)
-      bool ok = navigate_to_action(target_action, current.action_desc, current.status) &&
-                wait_for_action(target_action, std::chrono::seconds(5));
-      if (ok) {
-        RCLCPP_INFO(this->get_logger(), "Target action %s reached, holding for 2s...", target_action.c_str());
-        std::this_thread::sleep_for(std::chrono::seconds(2));
+      // Execute SetMcAction through the shared state-machine switcher.
+      bool ok = switch_action(target_action);
+      if (g_shutdown_requested.load()) {
+        return false;
       }
       std::cout << (ok ? "Switch succeeded." :
                        "Switch failed, please confirm if the expected Action "
                        "complies with the state machine transition logic")
                 << std::endl;
 
-      // Switch completed, navigate back to QUADRUPED_LOCOMOTION_DEFAULT
-      if (!get_action_status(current)) return true;
-      RCLCPP_INFO(this->get_logger(),
-                  "Switch done, navigating back to QUADRUPED_LOCOMOTION_DEFAULT, from %s...",
-                  current.action_desc.c_str());
-      if (navigate_to_action("QUADRUPED_LOCOMOTION_DEFAULT", current.action_desc, current.status))
-        wait_for_action("QUADRUPED_LOCOMOTION_DEFAULT", std::chrono::seconds(5));
       return true;
-    } else {
-      // Motion mode is currently disabled
-      RCLCPP_WARN(this->get_logger(), "Motion mode is currently disabled.");
-      return false;
-
-      // Optimized logic for 'motion' type: Ensure robot is in QUADRUPED_LOCOMOTION_DEFAULT
-      ActionInfo current;
-      if (!get_action_status(current)) return false;
-
-      if (current.action_desc == "QUADRUPED_LOCOMOTION_DEFAULT" &&
-          current.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
-        RCLCPP_INFO(this->get_logger(),
-                    "Robot already in QUADRUPED_LOCOMOTION_DEFAULT. Proceeding to motion...");
-      } else {
-        RCLCPP_INFO(this->get_logger(),
-                    "Current state is %s. Starting state machine transition sequence...",
-                    current.action_desc.c_str());
-        std::vector<std::string> sequence = {
-            "PASSIVE_DEFAULT", "BIPED_STAND_DEFAULT", "QUADRUPED_LOCOMOTION_DEFAULT"};
-        static const std::unordered_map<std::string, size_t> kStartIndex = {
-            {"PASSIVE_DEFAULT", 1}, {"BIPED_STAND_DEFAULT", 2}};
-        size_t start_index = (kStartIndex.count(current.action_desc) ? kStartIndex.at(current.action_desc) : 0);
-        for (size_t i = start_index; i < sequence.size(); ++i) {
-          if (!set_action(sequence[i]) || !wait_for_action(sequence[i])) return false;
-        }
+    } else if (type_ == "motion") {
+      const char *target_action = motion_action_target(motion_);
+      if (target_action == nullptr) {
+        RCLCPP_ERROR(
+            this->get_logger(),
+            "Cannot determine the robot form for motion '%s'. Motion names "
+            "must start with BIPED_ or QUAD_.",
+            motion_.c_str());
+        return false;
       }
 
-      // Execute final target motion
-      if (!set_motion(motion_, interrupt_)) return false;
+      RCLCPP_INFO(this->get_logger(),
+                  "Switching to %s before executing motion %s.",
+                  target_action, motion_.c_str());
+      if (!switch_action(target_action)) {
+        return false;
+      }
+
+      if (g_shutdown_requested.load()) {
+        return false;
+      }
+
+      if (!set_motion(motion_)) {
+        return false;
+      }
+
       return wait_for_motion();
     }
-  }
 
-  // 执行路径中的每个步骤
-  bool execute_path(const std::vector<std::string> &path) {
-    for (size_t i = 1; i < path.size(); ++i) {
-      const std::string &target = path[i];
-      RCLCPP_INFO(this->get_logger(), "Path step %zu/%zu: Switching to %s...",
-                  i, path.size() - 1, target.c_str());
-      // 重试机制：机器人可能还在运动中，等待稳定后再试
-      for (int attempt = 1; attempt <= 5; ++attempt) {
-        if (set_action(target)) {
-          if (wait_for_action(target)) break;
-          return false;
-        }
-        if (attempt < 5) {
-          RCLCPP_INFO(this->get_logger(), "Step %zu attempt %d/5 failed, waiting for robot to stabilize...", i, attempt);
-          std::this_thread::sleep_for(std::chrono::seconds(2));
-        } else {
-          return false;
-        }
-      }
-      // 等待物理动作稳定后再执行下一步
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-    return true;
-  }
-
-  bool navigate_to_action(const std::string &target_action,
-                          const std::string &current_desc, int32_t current_status) {
-    if (current_desc == target_action &&
-        current_status == aimdk_msgs::msg::McActionStatus::RUNNING) {
-      RCLCPP_INFO(this->get_logger(), "Already at target action: %s", target_action.c_str());
-      return true;
-    }
-
-    // 处理需要先恢复到 PASSIVE_DEFAULT 的状态
-    std::string actual_current = current_desc;
-    auto recovery_it = RECOVERY_TO_PASSIVE.find(current_desc);
-    if (recovery_it != RECOVERY_TO_PASSIVE.end()) {
-      const std::string &recovery_target = recovery_it->second;
-      RCLCPP_INFO(this->get_logger(), "Recovery: switching from %s to %s...",
-                  current_desc.c_str(), recovery_target.c_str());
-      if (!set_action(recovery_target) || !wait_for_action(recovery_target)) return false;
-      actual_current = recovery_target;
-    }
-
-    // 特殊路径：如果从 PASSIVE_DEFAULT 开始，强制使用固定路径
-    if (actual_current == "PASSIVE_DEFAULT" && target_action == "BIPED_LOCOMOTION_WBC") {
-      RCLCPP_INFO(this->get_logger(), "Using fixed path from PASSIVE_DEFAULT to BIPED_LOCOMOTION_WBC");
-      std::vector<std::string> path = {
-          "PASSIVE_DEFAULT",
-          "QUADRUPED_STAND_DEFAULT",
-          "QUADRUPED_LOCOMOTION_DEFAULT",
-          "QUADRUPED_TO_BIPED",
-          "BIPED_LOCOMOTION_WBC"
-      };
-      return execute_path(path);
-    }
-
-    auto path = find_path_bfs(actual_current, target_action);
-
-    if (path.empty()) {
-      // 图中找不到路径：尝试直接转换（由服务端校验合法性）
-      RCLCPP_INFO(this->get_logger(), "No path found for %s -> %s, attempting direct transition...",
-                  actual_current.c_str(), target_action.c_str());
-      if (!set_action(target_action)) return false;
-      return wait_for_action(target_action, std::chrono::seconds(5));
-    }
-
-    return execute_path(path);
-  }
-
-  bool wait_for_action(
-      const std::string &expected_action_desc,
-      std::chrono::seconds timeout = std::chrono::seconds(10),
-      std::chrono::milliseconds poll_interval = std::chrono::milliseconds(200)) {
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    RCLCPP_INFO(this->get_logger(), "Waiting for target action_desc=%s to reach RUNNING state...",
-                expected_action_desc.c_str());
-
-    while (rclcpp::ok() && std::chrono::steady_clock::now() < deadline) {
-      ActionInfo info;
-      if (!get_action_status(info)) {
-        std::this_thread::sleep_for(poll_interval);
-        continue;
-      }
-      if (info.status != aimdk_msgs::msg::McActionStatus::IDLE &&
-          info.action_desc == expected_action_desc) {
-        RCLCPP_INFO(this->get_logger(), "Target action reached and is running: action_desc=%s",
-                    expected_action_desc.c_str());
-        return true;
-      }
-      std::this_thread::sleep_for(poll_interval);
-    }
-
-    RCLCPP_ERROR(this->get_logger(),
-                 "Timed out waiting for target action_desc=%s to reach RUNNING state.",
-                 expected_action_desc.c_str());
     return false;
   }
 
@@ -355,7 +195,6 @@ public:
       }
 
       auto response = future.get();
-      info.action_id = response->info.current_action.value;
       info.action_desc = response->info.action_desc;
       info.status = response->info.status.value;
       return true;
@@ -366,6 +205,17 @@ public:
   }
 
 private:
+  static const char *motion_action_target(const std::string &motion_name) {
+    if (motion_name.rfind("QUAD_", 0) == 0 ||
+        motion_name.rfind("QUADRUPED_", 0) == 0) {
+      return "QUADRUPED_LOCOMOTION_DEFAULT";
+    }
+    if (motion_name.rfind("BIPED_", 0) == 0) {
+      return "BIPED_LOCOMOTION_WBC";
+    }
+    return nullptr;
+  }
+
   bool validate_parameters() {
     if (type_.empty()) {
       RCLCPP_ERROR(this->get_logger(),
@@ -413,97 +263,18 @@ private:
     return typename rclcpp::Client<ServiceT>::SharedFuture();
   }
 
-  std::vector<std::string> find_path_bfs(const std::string &start,
-                                        const std::string &target) {
-    if (start == target) {
-      return {start};
-    }
-
-    std::unordered_set<std::string> visited = {start};
-    std::deque<std::pair<std::string, std::vector<std::string>>> queue;
-    queue.push_back({start, {start}});
-
-    while (!queue.empty()) {
-      auto [current, path] = queue.front();
-      queue.pop_front();
-
-      auto it = ACTION_GRAPH.find(current);
-      if (it == ACTION_GRAPH.end()) {
-        continue;
-      }
-
-      for (const auto &neighbor : it->second) {
-        if (neighbor == target) {
-          auto result = path;
-          result.push_back(neighbor);
-          return result;
-        }
-        if (visited.find(neighbor) == visited.end()) {
-          visited.insert(neighbor);
-          auto new_path = path;
-          new_path.push_back(neighbor);
-          queue.push_back({neighbor, new_path});
-        }
-      }
-    }
-
-    return {};
-  }
-
-  bool set_action(const std::string &action_desc) {
-    try {
-      auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
-      request->header.stamp = this->now();
-      request->source = "node";  // 触发源标识
-      request->command.action.value = 0;
-      request->command.action_desc = action_desc;
-
-      RCLCPP_INFO(this->get_logger(), "Sending request: action_desc=%s", action_desc.c_str());
-
-      auto future = call_service_with_retry<aimdk_msgs::srv::SetMcAction>(
-          set_action_client_, request, "SetMcAction");
-
-      // 超时后检查是否实际已到达目标状态
-      if (!future.valid()) {
-        ActionInfo info;
-        if (get_action_status(info) && info.action_desc == action_desc) {
-          RCLCPP_WARN(this->get_logger(),
-                      "SetMcAction timed out, but target action is already active: %s status=%d",
-                      info.action_desc.c_str(), info.status);
-          return true;
-        }
-        return false;
-      }
-
-      auto response = future.get();
-      if (response->response.status.value == aimdk_msgs::msg::CommonState::SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "SetMcAction request accepted by service.");
-        return true;
-      }
-      
-      RCLCPP_ERROR(this->get_logger(),
-                   "SetMcAction failed. code=%ld status=%d msg=%s",
-                   response->response.header.code,
-                   response->response.status.value,
-                   response->response.message.c_str());
-      return false;
-    } catch (const std::exception &e) {
-      RCLCPP_ERROR(this->get_logger(), "Exception occurred: %s", e.what());
-      return false;
-    }
-  }
-
-  bool set_motion(const std::string &motion_name, bool interrupt) {
+  bool set_motion(const std::string &motion_name) {
     try {
       for (int attempt = 1; attempt <= 5; ++attempt) {
         auto request = std::make_shared<aimdk_msgs::srv::SetMcMotion::Request>();
         request->header.stamp = this->now();
         request->motion = motion_name;
         request->type = aimdk_msgs::srv::SetMcMotion::Request::MIMIC_QY;
-        request->interrupt = interrupt;
+        request->interrupt = false;
 
-        RCLCPP_INFO(this->get_logger(), "Sending SetMcMotion request (%d/5): motion=%s interrupt=%s",
-                    attempt, motion_name.c_str(), interrupt ? "true" : "false");
+        RCLCPP_INFO(this->get_logger(),
+                    "Sending SetMcMotion request (%d/5): motion=%s",
+                    attempt, motion_name.c_str());
 
         auto future = set_motion_client_->async_send_request(request);
         if (rclcpp::spin_until_future_complete(shared_from_this(), future, std::chrono::seconds(1)) !=
@@ -548,8 +319,9 @@ private:
         continue;
       }
       if (info.status == aimdk_msgs::msg::McActionStatus::RUNNING) {
-        RCLCPP_INFO(this->get_logger(), "Current motion action is running: action_id=%d action_desc=%s",
-                    info.action_id, info.action_desc.c_str());
+        RCLCPP_INFO(this->get_logger(),
+                    "Current motion action is running: action_desc=%s",
+                    info.action_desc.c_str());
         return true;
       }
       std::this_thread::sleep_for(poll_interval);
@@ -570,9 +342,7 @@ private:
 
   void wait_for_services() {
     wait_for_service(get_client_, "/aimdk_5Fmsgs/srv/GetMcAction");
-    if (type_ == "action") {
-      wait_for_service(set_action_client_, "/aimdk_5Fmsgs/srv/SetMcAction");
-    } else if (type_ == "motion") {
+    if (type_ == "motion") {
       wait_for_service(set_motion_client_, "/aimdk_5Fmsgs/srv/SetMcMotion");
     }
   }
@@ -580,9 +350,6 @@ private:
   std::string type_;
   std::string action_desc_;
   std::string motion_;
-  bool interrupt_ = true;
-
-  rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr set_action_client_;
   rclcpp::Client<aimdk_msgs::srv::SetMcMotion>::SharedPtr set_motion_client_;
   rclcpp::Client<aimdk_msgs::srv::GetMcAction>::SharedPtr get_client_;
 };
@@ -595,26 +362,18 @@ int main(int argc, char *argv[]) {
   auto node = std::make_shared<SetMcActionClient>();
   g_node = node;
 
+  bool ok = false;
   try {
-    bool ok = node->execute();
-    node.reset();
-    g_node.reset();
-    if (rclcpp::ok()) rclcpp::shutdown();
-    return ok ? 0 : 1;
+    ok = node->execute();
   } catch (...) {
-    // Ctrl+C or other interrupt: navigate back to QUADRUPED_LOCOMOTION_DEFAULT
     if (node && rclcpp::ok()) {
-      SetMcActionClient::ActionInfo current;
-      if (node->get_action_status(current)) {
-        RCLCPP_INFO(node->get_logger(), "Ctrl+C received, navigating back to QUADRUPED_LOCOMOTION_DEFAULT from %s...",
-                    current.action_desc.c_str());
-        if (node->navigate_to_action("QUADRUPED_LOCOMOTION_DEFAULT", current.action_desc, current.status))
-          node->wait_for_action("QUADRUPED_LOCOMOTION_DEFAULT", std::chrono::seconds(5));
-      }
+      RCLCPP_WARN(node->get_logger(),
+                  "Interrupted by an exception; shutting down.");
     }
-    node.reset();
-    g_node.reset();
-    if (rclcpp::ok()) rclcpp::shutdown();
-    return 0;
   }
+
+  node.reset();
+  g_node.reset();
+  if (rclcpp::ok()) rclcpp::shutdown();
+  return g_shutdown_requested.load() ? 130 : (ok ? 0 : 1);
 }

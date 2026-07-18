@@ -14,14 +14,9 @@
  *   ros2 run aimdk_examples_cpp upper_body_control
  */
 
-#include "aimdk_msgs/msg/common_request.hpp"
 #include "aimdk_msgs/msg/joint_command.hpp"
-#include "aimdk_msgs/msg/mc_action_command.hpp"
-#include "aimdk_msgs/msg/mc_action_status.hpp"
 #include "aimdk_msgs/msg/mc_custom_joint_command.hpp"
-#include "aimdk_msgs/msg/request_header.hpp"
-#include "aimdk_msgs/srv/get_mc_action.hpp"
-#include "aimdk_msgs/srv/set_mc_action.hpp"
+#include "mc_action_switcher.hpp"
 #include "rclcpp/rclcpp.hpp"
 
 #include <algorithm>
@@ -34,7 +29,6 @@
 #include <memory>
 #include <string>
 #include <thread>
-#include <vector>
 
 namespace {
 
@@ -89,11 +83,6 @@ class CustomUpperControlNode : public rclcpp::Node
         this->create_publisher<aimdk_msgs::msg::McCustomJointCommand>(
             "/aima/mc/custom/joint/command", qos);
 
-    set_action_client_ = this->create_client<aimdk_msgs::srv::SetMcAction>(
-        "/aimdk_5Fmsgs/srv/SetMcAction");
-    get_action_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
-        "/aimdk_5Fmsgs/srv/GetMcAction");
-
     initialize_command_message();
 
     RCLCPP_INFO(
@@ -102,125 +91,23 @@ class CustomUpperControlNode : public rclcpp::Node
         "will auto-transition to BIPED_CUSTOM_UPPER before publishing commands.");
   }
 
-  std::string get_action_desc()
-  {
-    auto request = std::make_shared<aimdk_msgs::srv::GetMcAction::Request>();
-    request->request = aimdk_msgs::msg::CommonRequest();
-    request->request.header.stamp = this->now();
-
-    auto future = get_action_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(this->shared_from_this(), future,
-                                           std::chrono::seconds(2)) !=
-        rclcpp::FutureReturnCode::SUCCESS) {
-      return "";
-    }
-
-    auto response = future.get();
-    if (!response) {
-      return "";
-    }
-    if (response->info.status.value != aimdk_msgs::msg::McActionStatus::RUNNING) {
-      return "";
-    }
-    return response->info.action_desc;
-  }
-
-  bool set_action(const std::string &action_desc)
-  {
-    auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
-    request->header.stamp = this->now();
-    request->source = "node";
-    request->command = aimdk_msgs::msg::McActionCommand();
-    request->command.action_desc = action_desc;
-
-    RCLCPP_INFO(this->get_logger(), "Requesting state switch to: %s",
-                action_desc.c_str());
-
-    auto future = set_action_client_->async_send_request(request);
-    if (rclcpp::spin_until_future_complete(this->shared_from_this(), future,
-                                           std::chrono::seconds(2)) !=
-        rclcpp::FutureReturnCode::SUCCESS) {
-      return false;
-    }
-    return future.get() != nullptr;
-  }
-
-  bool wait_for_action(const std::string &action_desc,
-                       double timeout_sec = 20.0)
-  {
-    const auto deadline =
-        std::chrono::steady_clock::now() +
-        std::chrono::duration_cast<std::chrono::steady_clock::duration>(
-            std::chrono::duration<double>(timeout_sec));
-
-    while (rclcpp::ok() && !g_stop.load() &&
-           std::chrono::steady_clock::now() < deadline) {
-      if (get_action_desc() == action_desc) {
-        RCLCPP_INFO(this->get_logger(), "Robot reached state: %s",
-                    action_desc.c_str());
-        return true;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }
-
-    RCLCPP_ERROR(this->get_logger(), "Timeout waiting for state: %s",
-                 action_desc.c_str());
-    return false;
-  }
-
   bool switch_to_custom_upper()
   {
-    if (!set_action_client_->wait_for_service(std::chrono::seconds(5))) {
-      RCLCPP_ERROR(this->get_logger(), "SetMcAction service is not available.");
-      return false;
+    aimdk_examples::McActionSwitcher switcher(this->shared_from_this());
+    aimdk_examples::McActionSwitchOptions options;
+    options.source = "upper_body_control";
+    options.total_timeout = std::chrono::seconds(30);
+
+    const auto result =
+        switcher.switch_to("BIPED_CUSTOM_UPPER", options);
+    if (!result.success) {
+      RCLCPP_ERROR(
+          this->get_logger(),
+          "Failed to switch from %s to BIPED_CUSTOM_UPPER: %s",
+          result.current_action.empty() ? "(unknown)" : result.current_action.c_str(),
+          result.message.c_str());
     }
-    if (!get_action_client_->wait_for_service(std::chrono::seconds(5))) {
-      RCLCPP_ERROR(this->get_logger(), "GetMcAction service is not available.");
-      return false;
-    }
-
-    std::string current_action = get_action_desc();
-    if (current_action == "BIPED_CUSTOM_UPPER") {
-      return true;
-    }
-
-    RCLCPP_INFO(this->get_logger(),
-                "Current state is %s. Switching to BIPED_CUSTOM_UPPER.",
-                current_action.empty() ? "(unknown)" : current_action.c_str());
-
-    static const std::vector<std::string> sequence = {
-        "PASSIVE_DEFAULT",
-        "QUADRUPED_LOCOMOTION_DEFAULT",
-        "BIPED_LOCOMOTION_WBC",
-        "BIPED_CUSTOM_UPPER",
-    };
-
-    size_t start_index = 0;
-    if (current_action == "PASSIVE_DEFAULT") {
-      start_index = 1;
-    } else if (current_action == "QUADRUPED_LOCOMOTION_DEFAULT") {
-      start_index = 2;
-    } else if (current_action == "BIPED_LOCOMOTION_WBC") {
-      start_index = 3;
-    } else if (current_action == "DAMPING_DEFAULT" ||
-               current_action == "STORE_DEFAULT") {
-      start_index = 0;
-    } else {
-      start_index = 3;
-    }
-
-    for (size_t i = start_index; i < sequence.size(); ++i) {
-      const std::string &action_desc = sequence[i];
-      const std::string &wait_desc =
-          (action_desc == "QUADRUPED_TO_BIPED") ? "BIPED_LOCOMOTION_WBC"
-                                                 : action_desc;
-      if (!set_action(action_desc) || !wait_for_action(wait_desc)) {
-        return false;
-      }
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-
-    return true;
+    return result.success;
   }
 
   // ── Demo logic ──
@@ -382,8 +269,6 @@ class CustomUpperControlNode : public rclcpp::Node
   }
 
   rclcpp::Publisher<aimdk_msgs::msg::McCustomJointCommand>::SharedPtr command_pub_;
-  rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr set_action_client_;
-  rclcpp::Client<aimdk_msgs::srv::GetMcAction>::SharedPtr get_action_client_;
   aimdk_msgs::msg::McCustomJointCommand command_msg_;
 
   Pose current_demo_pose_;

@@ -29,6 +29,8 @@ foreach(EXAMPLE_TARGET ${EXAMPLE_TARGETS})
   endif()
   add_executable(${EXAMPLE_TARGET} ${EXAMPLE_SOURCE})
   ament_target_dependencies(${EXAMPLE_TARGET} rclcpp aimdk_msgs)
+  target_include_directories(${EXAMPLE_TARGET} PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/common)
   if(EXAMPLE_TARGET STREQUAL "get_video_stream")
     target_include_directories(${EXAMPLE_TARGET} PRIVATE ${OpenCV_INCLUDE_DIRS})
     target_link_libraries(${EXAMPLE_TARGET} ${OpenCV_LIBS})
