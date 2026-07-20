@@ -32,15 +32,14 @@ Parameters:
     routed to the corresponding whole-body action automatically
 
 Notes:
-  - Single Switch: Switches to target action, holds for 2s, then auto-returns to QUADRUPED_LOCOMOTION_DEFAULT.
+  - Single Switch: Switches to the requested target action and waits for completion.
   - Auto Path: McActionSwitcher finds and executes a valid transition path.
   - Recovery: McActionSwitcher handles intermediate and automatic transitions.
   - Retry: McActionSwitcher waits for each requested action to become active.
-  - Ctrl+C Safety: During execution, Ctrl+C navigates back to QUADRUPED_LOCOMOTION_DEFAULT before exit.
+  - Ctrl+C: Interrupts the current action switch and exits without switching to a default action.
   - WARNING: Do NOT use QUADRUPED_LOCOMOTION_JUMP for testing — the robot will jump and may cause injury or damage.
 """
 
-import signal
 import time
 
 import rclpy
@@ -96,41 +95,26 @@ class SetMcActionClient(Node):
         self.wait_for_services()
 
         if self.type == 'action':
+            _, current_desc, current_status = self.get_action_status()
+            self.get_logger().info(f'Current Action is: {current_desc}')
+
             try:
-                _, current_desc, current_status = self.get_action_status()
-                self.get_logger().info(f'Current Action is: {current_desc}')
-
-                try:
-                    target_action = (
-                        self.action_desc or input(
-                            f"Current Action is: {current_desc}, please input the expected Action "
-                            "according to the motion control state machine transition logic in the "
-                            "interface documentation. The Action you need to switch: "
-                        ).strip()
-                    )
-                except EOFError:
-                    return True
-                if not target_action:
-                    return True
-
-                ok = self.switch_action(target_action)
-                if ok:
-                    self.get_logger().info(f'Target action {target_action} reached, holding for 2s...')
-                    time.sleep(2.0)
-                print("Switch succeeded." if ok else
-                      "Switch failed, please confirm if the expected Action complies with the state machine transition logic")
-
-                # Switch completed, navigate back to QUADRUPED_LOCOMOTION_DEFAULT
-                _, current_desc, _ = self.get_action_status()
-                self.get_logger().info(f'Switch done, navigating back to QUADRUPED_LOCOMOTION_DEFAULT, from {current_desc}...')
-                self.switch_action('QUADRUPED_LOCOMOTION_DEFAULT')
+                target_action = (
+                    self.action_desc or input(
+                        f"Current Action is: {current_desc}, please input the expected Action "
+                        "according to the motion control state machine transition logic in the "
+                        "interface documentation. The Action you need to switch: "
+                    ).strip()
+                )
+            except EOFError:
                 return True
-            except KeyboardInterrupt:
-                # Ctrl+C: navigate back to QUADRUPED_LOCOMOTION_DEFAULT before exit
-                _, current_desc, _ = self.get_action_status()
-                self.get_logger().info(f'Ctrl+C received, navigating back to QUADRUPED_LOCOMOTION_DEFAULT from {current_desc}...')
-                self.switch_action('QUADRUPED_LOCOMOTION_DEFAULT')
+            if not target_action:
                 return True
+
+            ok = self.switch_action(target_action)
+            print("Switch succeeded." if ok else
+                  "Switch failed, please confirm if the expected Action complies with the state machine transition logic")
+            return True
         else:
             target_action = self._motion_action_target(self.motion)
             if target_action is None:
@@ -279,9 +263,6 @@ class SetMcActionClient(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    # init 之后立即覆盖 ROS2 的 SIGINT 处理器
-    # 阻止 Ctrl+C 触发 rclpy.shutdown()，保持上下文有效以恢复状态
-    signal.signal(signal.SIGINT, lambda sig, frame: (_ for _ in ()).throw(KeyboardInterrupt))
 
     node = None
     try:
