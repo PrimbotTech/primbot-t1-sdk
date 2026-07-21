@@ -6,12 +6,10 @@
  QUADRUPED_LOCOMOTION_DEFAULT mode.
  
  Prerequisites auto-handled by this script:
-   The script ensures a safe sequential transition path:
-   PASSIVE_DEFAULT -> QUADRUPED_STAND_DEFAULT -> QUADRUPED_LOCOMOTION_DEFAULT
-   Depending on the initial state, it enters the sequence at the appropriate step.
+   The shared MC action switcher handles the initial state.
  
  Flow:
-   1. Detect current state and transition to QUADRUPED_LOCOMOTION_DEFAULT sequentially.
+   1. Detect current state and transition to QUADRUPED_LOCOMOTION_DEFAULT.
    2. Register this node as an authorized input source (priority 80).
    3. Prompt the user for target velocities.
    4. Publish velocity commands for 5 seconds.
@@ -23,19 +21,11 @@
  */
 #include "aimdk_msgs/msg/mc_locomotion_velocity.hpp"
 #include "aimdk_msgs/msg/common_request.hpp"
-#include "aimdk_msgs/msg/common_response.hpp"
-#include "aimdk_msgs/msg/common_state.hpp"
-#include "aimdk_msgs/msg/common_task_response.hpp"
 #include "aimdk_msgs/msg/mc_input_action.hpp"
 #include "aimdk_msgs/msg/message_header.hpp"
-#include "aimdk_msgs/msg/mc_action.hpp"
-#include "aimdk_msgs/msg/mc_action_command.hpp"
-#include "aimdk_msgs/msg/mc_action_status.hpp"
-#include "aimdk_msgs/msg/request_header.hpp"
 #include "aimdk_msgs/srv/get_current_input_source.hpp"
 #include "aimdk_msgs/srv/set_mc_input_source.hpp"
-#include "aimdk_msgs/srv/get_mc_action.hpp"
-#include "aimdk_msgs/srv/set_mc_action.hpp"
+#include "mc_action_switcher.hpp"
 
 #include "rclcpp/rclcpp.hpp"
 #include <cmath>
@@ -45,8 +35,6 @@
 #include <signal.h>
 #include <stdexcept>
 #include <thread>
-#include <unordered_map>
-#include <vector>
 
 constexpr double kServiceCallTimeoutSec = 2.0;
 constexpr int kMaxRetryCount = 3;
@@ -62,11 +50,6 @@ public:
         "/aimdk_5Fmsgs/srv/SetMcInputSource");
     get_client_ = this->create_client<aimdk_msgs::srv::GetCurrentInputSource>(
         "/aimdk_5Fmsgs/srv/GetCurrentInputSource");
-    set_action_client_ = this->create_client<aimdk_msgs::srv::SetMcAction>(
-        "/aimdk_5Fmsgs/srv/SetMcAction");
-    get_action_client_ = this->create_client<aimdk_msgs::srv::GetMcAction>(
-        "/aimdk_5Fmsgs/srv/GetMcAction");
-
     // Minimum speed limits (0 is also OK)
     min_forward_speed_ = 0.2; // m/s
     min_lateral_speed_ = 0.2; // m/s
@@ -261,137 +244,22 @@ public:
     }
   }
 
-  struct ActionInfo {
-    std::string action_desc;
-    int32_t status = aimdk_msgs::msg::McActionStatus::IDLE;
-  };
-
-  bool get_action_status(ActionInfo &info) {
-    auto request = std::make_shared<aimdk_msgs::srv::GetMcAction::Request>();
-    request->request.header.stamp = this->now();
-    
-    auto future = call_service_with_retry<aimdk_msgs::srv::GetMcAction>(
-        get_action_client_, request, "GetMcAction");
-    
-    if (!future.valid()) {
-      return false;
-    }
-
-    auto res = future.get();
-    if (!res) return false;
-    info.action_desc = res->info.action_desc;
-    info.status = res->info.status.value;
-    return true;
-  }
-
-  bool set_action(const std::string &desc) {
-    auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
-    request->header.stamp = this->now();
-    request->source = "node";  // 触发源标识
-    request->command.action_desc = desc;
-    RCLCPP_INFO(this->get_logger(), "Requesting state switch to: %s",
-                desc.c_str());
-    
-    auto future = call_service_with_retry<aimdk_msgs::srv::SetMcAction>(
-        set_action_client_, request, "SetMcAction");
-    
-    if (!future.valid()) {
-      return false;
-    }
-
-    auto res = future.get();
-    if (res && res->response.status.value == aimdk_msgs::msg::CommonState::SUCCESS) {
-      return true;
-    }
-    
-    if (res) {
-      RCLCPP_ERROR(this->get_logger(),
-                   "SetMcAction failed. code=%ld status=%d msg=%s",
-                   res->response.header.code,
-                   res->response.status.value,
-                   res->response.message.c_str());
-    }
-    
-    return false;
-  }
-
-  bool wait_for_action(const std::string &target,
-                       std::chrono::seconds timeout = std::chrono::seconds(10)) {
-    auto deadline = std::chrono::steady_clock::now() + timeout;
-    while (std::chrono::steady_clock::now() < deadline) {
-      ActionInfo info;
-      // Locomotion modes (walk/run) report status=2 (TRANSITION) instead of
-      // RUNNING (100), so accept any non-IDLE status when action_desc matches.
-      if (get_action_status(info) && info.action_desc == target &&
-          info.status != aimdk_msgs::msg::McActionStatus::IDLE) {
-        RCLCPP_INFO(this->get_logger(), "Robot reached state: %s (status=%d)",
-                    target.c_str(), info.status);
-        return true;
-      }
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-    }
-    return false;
-  }
-
   bool ensure_ready_state() {
-    ActionInfo info;
-    bool has_info = get_action_status(info);
+    aimdk_examples::McActionSwitcher switcher(this->shared_from_this());
+    aimdk_examples::McActionSwitchOptions options;
+    options.source = "locomotion_velocity_node";
+    options.total_timeout = std::chrono::seconds(30);
 
-    // Safety margin: If initial query fails, poll for up to 5s to recover communication
-    if (!has_info) {
-      RCLCPP_WARN(this->get_logger(),
-                  "Initial action status query failed. Retrying for up to 5 seconds...");
-      auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
-      while (std::chrono::steady_clock::now() < deadline) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        if (get_action_status(info)) {
-          has_info = true;
-          RCLCPP_INFO(this->get_logger(),
-                      "Successfully recovered action status: %s",
-                      info.action_desc.c_str());
-          break;
-        }
-      }
-      if (!has_info) {
-        RCLCPP_ERROR(
-            this->get_logger(),
-            "Action status remained unavailable after 5 seconds of polling.");
-      }
+    const auto result =
+        switcher.switch_to("QUADRUPED_LOCOMOTION_DEFAULT", options);
+    if (!result.success) {
+      RCLCPP_ERROR(
+          this->get_logger(),
+          "Failed to switch from %s to QUADRUPED_LOCOMOTION_DEFAULT: %s",
+          result.current_action.empty() ? "(unknown)" : result.current_action.c_str(),
+          result.message.c_str());
     }
-
-    if (has_info && info.action_desc == "QUADRUPED_LOCOMOTION_DEFAULT" &&
-        info.status != aimdk_msgs::msg::McActionStatus::IDLE) {
-      return true;
-    }
-
-    RCLCPP_INFO(this->get_logger(),
-                "Current state is %s. Starting state machine transition sequence...",
-                info.action_desc.c_str());
-
-    std::vector<std::string> sequence = {
-      "PASSIVE_DEFAULT",
-      "QUADRUPED_STAND_DEFAULT",
-      "QUADRUPED_LOCOMOTION_DEFAULT"
-    };
-
-    size_t start_index = 0;
-    if (info.action_desc == "PASSIVE_DEFAULT") {
-        start_index = 1;
-    } else if (info.action_desc == "QUADRUPED_STAND_DEFAULT") {
-        start_index = 2;
-    } else if (info.action_desc == "DAMPING_DEFAULT" ) {
-        start_index = 0;
-    } else {
-        start_index = 0;
-    }
-
-    for (size_t i = start_index; i < sequence.size(); ++i) {
-        if (!set_action(sequence[i]) || !wait_for_action(sequence[i])) {
-            return false;
-        }
-    }
-
-    return true;
+    return result.success;
   }
 
   bool release_input_source() {
@@ -432,8 +300,6 @@ public:
     };
     wait(set_client_, "/aimdk_5Fmsgs/srv/SetMcInputSource");
     wait(get_client_, "/aimdk_5Fmsgs/srv/GetCurrentInputSource");
-    wait(set_action_client_, "/aimdk_5Fmsgs/srv/SetMcAction");
-    wait(get_action_client_, "/aimdk_5Fmsgs/srv/GetMcAction");
   }
 
 private:
@@ -453,8 +319,6 @@ private:
       publisher_;
   rclcpp::Client<aimdk_msgs::srv::SetMcInputSource>::SharedPtr set_client_;
   rclcpp::Client<aimdk_msgs::srv::GetCurrentInputSource>::SharedPtr get_client_;
-  rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr set_action_client_;
-  rclcpp::Client<aimdk_msgs::srv::GetMcAction>::SharedPtr get_action_client_;
   rclcpp::TimerBase::SharedPtr timer_;
 
   double forward_velocity_;
