@@ -1,7 +1,7 @@
 # 请求头
 RequestHeader header
 
-# 触发源
+# 触发源 定义见 McTaskSource.msg
 string source
 
 # Action命令
@@ -9,4 +9,4 @@ McActionCommand command
 
 ---
 
-CommonResponse response
+CommonTaskResponse response

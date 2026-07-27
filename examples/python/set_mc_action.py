@@ -172,7 +172,7 @@ class SetMcActionClient(Node):
     def switch_action(self, target_action: str) -> bool:
         switcher = McActionSwitcher(self)
         options = McActionSwitchOptions(
-            source="set_mc_action_node",
+            source="set_mc_action",
             total_timeout=30.0,
         )
         result = switcher.switch_to(target_action, options)
@@ -197,6 +197,7 @@ class SetMcActionClient(Node):
                 request = SetMcMotion.Request()
                 request.header = RequestHeader()
                 request.header.stamp = self.get_clock().now().to_msg()
+                request.source = 'set_mc_action'
                 request.motion = motion_name
                 request.type = SetMcMotion.Request.MIMIC_QY
                 request.interrupt = False

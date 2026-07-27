@@ -99,7 +99,7 @@ public:
   bool switch_action(const std::string &target_action) {
     aimdk_examples::McActionSwitcher switcher(shared_from_this());
     aimdk_examples::McActionSwitchOptions options;
-    options.source = "set_mc_action_node";
+    options.source = "set_mc_action";
     options.total_timeout = std::chrono::seconds(30);
     options.should_cancel = []() {
       return g_shutdown_requested.load();
@@ -268,6 +268,7 @@ private:
       for (int attempt = 1; attempt <= 5; ++attempt) {
         auto request = std::make_shared<aimdk_msgs::srv::SetMcMotion::Request>();
         request->header.stamp = this->now();
+        request->source = "set_mc_action";
         request->motion = motion_name;
         request->type = aimdk_msgs::srv::SetMcMotion::Request::MIMIC_QY;
         request->interrupt = false;
