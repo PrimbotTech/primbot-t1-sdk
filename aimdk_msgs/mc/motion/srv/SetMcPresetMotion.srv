@@ -1,6 +1,9 @@
 # 请求头
 RequestHeader header
 
+# 触发源 定义见 McTaskSource.msg
+string source
+
 # 控制区域
 McControlArea area
 

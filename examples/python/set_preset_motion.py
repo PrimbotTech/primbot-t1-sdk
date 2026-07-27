@@ -94,6 +94,7 @@ class SetMcPresetMotionClient(Node):
         request = SetMcPresetMotion.Request()
         request.header = RequestHeader()
         request.header.stamp = self.get_clock().now().to_msg()
+        request.source = 'preset_motion'
         request.motion = McPresetMotion()
         request.motion.value = motion_id
         request.interrupt = True

@@ -642,7 +642,8 @@ class McActionSwitcher:
             response = future.result()
             return (
                 response is not None
-                and response.response.status.value == CommonState.SUCCESS
+                and response.response.header.code == 0
+                and response.response.state.value == CommonState.SUCCESS
             )
         except Exception as error:  # ROS futures surface transport failures here.
             self._node.get_logger().warning(
