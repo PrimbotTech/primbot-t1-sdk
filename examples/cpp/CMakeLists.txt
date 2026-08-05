@@ -10,8 +10,12 @@ set(EXAMPLE_TARGETS
   get_audio_stream
   get_bms_state
   get_jpg
+  get_mc_common_state
+  get_mc_motions
+  get_camera_switch
   get_touch_state
   get_video_stream
+  hal_camera_command
   joint_control
   mc_locomotion_velocity
   play_audio

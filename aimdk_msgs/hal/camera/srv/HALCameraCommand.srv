@@ -1,0 +1,21 @@
+# request
+CommonRequest request
+
+# 命令名（点分层级），例如：
+#   stream.enable    → 开启某路 NV12 发布
+#   stream.disable   → 关闭某路 NV12 发布
+#   （预留：set.fps、set.resolution、snapshot.trigger ...）
+string command
+
+# KV 参数列表（param_keys[i] 对应 param_values[i]）
+# 示例 stream.enable: keys=["topic"], values=["/aima/hal/camera/bgr_camera_l/nv12"]
+string[] param_keys
+string[] param_values
+
+---
+
+# response
+CommonResponse response
+# 可选返回值（供需要回传数据的命令使用，如 get.fps 返回当前帧率）
+string[] result_keys
+string[] result_values
