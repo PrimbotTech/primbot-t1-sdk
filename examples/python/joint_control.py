@@ -12,7 +12,7 @@ Description:
   positions, stiffness, and damping.
 
 Prerequisites:
-  - Robot must be in low-level motion control developer mode (run `aima mode edit` ->
+  - Robot must be in low-level motion control developer mode (run `yamo mode edit` ->
     Advanced -> domains.mc.low_level_dev, then reboot)
   - Robot must be placed flat on the ground or suspended
   - Joint state topic /aima/hal/joint/state must be publishing
