@@ -29,6 +29,7 @@
     - [5.4 机器人域配置](#54-机器人域配置)
     - [5.5 colcon 安装异常排查](#55-colcon-安装异常排查)
     - [5.6 登录与设置相关](#56-登录与设置相关)
+    - [5.7 通信配置](#57-通信配置)
 
 ---
 
@@ -135,6 +136,10 @@ fi
 source ~/.bashrc
 ```
 > 若未写入 `~/.bashrc`，则每次打开新终端需手动执行 `source /opt/ros/humble/setup.bash`。
+
+**通信配置**
+
+SDK 默认 FastDDS 配置会自动加载 20M UDP socket buffer。为避免高频 Topic 出现丢帧、消息时通时不通或 pub/sub 帧率不足，Ubuntu/Linux 开发 PC 建议提前持久化配置对应的内核 UDP 缓冲区上限。临时与持久化修改方法、内核参数与 FastDDS profile 的对应关系，以及可选 SHM 配置说明，请参考 [5.7 通信配置](#57-通信配置)。
 
 **构建工具 (colcon)**
 
@@ -304,9 +309,12 @@ colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 **3. 加载编译产物**
 
 > *(每次打开新终端运行 SDK 相关节点前都需执行此步。**注意：请务必将下方命令的路径替换为您实际解压 SDK 的绝对路径！**)*
+> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
 ```bash
 source /path/to/your/primebot_sdk/install/setup.bash
 ```
+
+> **FastDDS 配置自动加载**：SDK 已在 `aimdk_msgs` 包内安装 `ament_environment_hooks`。执行上述 `source` 后，若当前终端没有手动设置 DDS 配置，会自动使用 `rmw_fastrtps_cpp`，并加载 `<sdk-install>/share/aimdk_msgs/config/fastdds_profiles.xml`。FastDDS 配置会随 SDK setup 自动加载，但内核参数不会由 SDK 自动修改；通信配置关系、临时与持久化修改方法参见 [5.7 通信配置](#57-通信配置)。
 
 **4. 验证数据接收**
 
@@ -328,6 +336,7 @@ timeout 5 ros2 topic echo /aima/hal/bms/state --once
 我们可以通过“终端 A 模拟发布”和“终端 B 订阅数据”的方式，验证触摸事件接口是否正常工作。
 
 *终端 A（模拟发布数据）：*
+> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
 ```bash
 # 1. 加载环境变量
 source /opt/ros/humble/setup.bash
@@ -338,6 +347,7 @@ ros2 topic pub /aima/hal/touch/state aimdk_msgs/msg/TouchState \
 ```
 
 *终端 B（订阅数据）：*
+> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
 ```bash
 # 1. 开一个新终端，需先重新加载环境变量
 source /opt/ros/humble/setup.bash
@@ -364,6 +374,7 @@ ros2 topic echo /aima/hal/touch/state
 我们可以直接在终端调用机器人的 TTS（Text-to-Speech）语音播报服务，验证服务响应是否成功以及机器人能否正常发声。
 
 *终端（调用 TTS 服务）：*
+> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
 ```bash
 # 1. 开一个新终端，需先重新加载环境变量
 source /opt/ros/humble/setup.bash
@@ -385,6 +396,7 @@ ros2 service call /aimdk_5Fmsgs/srv/PlayTts aimdk_msgs/srv/PlayTts \
 
 ### 2.3 运行示例
 每次打开新终端，运行示例前需先加载环境：
+> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
 ```bash
 source /opt/ros/humble/setup.bash
 source /path/to/your/primebot_sdk/install/setup.bash
@@ -459,6 +471,7 @@ my_ai_backend/
     ```
 3. **环境注入与启动**：
     创建启动包装脚本 `run.sh`，**并将以下内容保存到该脚本中**：
+    > 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
     ```bash
     #!/bin/bash
     # 挂载底座与依赖总库
@@ -516,6 +529,7 @@ C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `amen
     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
     ```
 4. **加载与运行**：加载环境并运行节点：
+    > 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
     ```bash
     source /opt/ros/humble/setup.bash
     source /path/to/your/primebot_sdk/install/setup.bash
@@ -628,6 +642,7 @@ my_project/
 
 5. **加载并运行**：
 
+    > 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
     ```bash
     source /opt/ros/humble/setup.bash
     source install/setup.bash
@@ -681,15 +696,16 @@ my_project/
 
 ### 5.2 数据收发异常排查
 
-**Q: 节点能看到，但 `ros2 topic echo` 超时无输出，或者 SDK 提示 `Service not available`？**
+**Q: 节点能看到，但 `ros2 topic echo` 超时无输出、消息时通时不通、pub/sub 帧率不足，或者 SDK 提示 `Service not available`？**
 
-这种现象说明 DDS 发现（Discovery）成功建连，但在**数据包实际传输（UDP Traffic）**或**消息反序列化**阶段失败了。请排查以下几点：
+这种现象说明 DDS 发现（Discovery）成功建连，但在**数据包实际传输（UDP Traffic）**、**消息反序列化**或**高频数据收发稳定性**阶段出现异常。请排查以下几点：
 1. **防火墙拦截 UDP 流量**：节点发现用的是特定的组播端口，而具体的数据收发使用的是随机大端口（往往几万起步）。部分系统的默认防火墙会拦截这些大端口的 UDP 数据传输报文。**请尝试关闭防火墙**：
    ```bash
    sudo ufw disable
    ```
-2. **环境变量未加载（报错 Cannot determine type）**：在对特定自定义消息进行操作时，如果当前终端没有先执行 `source /path/to/your/primebot_sdk/install/setup.bash`（需替换为您实际路径），电脑环境里就不存在该消息协议，无法做二进制的反序列化导致报错。
-3. **消息按事件触发（无源数据）**：部分 Topic（如触摸事件），只有在发生物理接触时才会发送数据产生流量。如果您此时监听该 Topic，可能只需实际触发一次（如摸一下机器人头部）即可触发数据产生。
+2. **通信配置不足或不匹配**：SDK 默认 FastDDS 配置已将 UDP socket buffer 设置为 20M，对应的开发 PC 内核 UDP 缓冲区上限也应设置为 20M+，并保证内核参数值大于等于 `aimdk_msgs/config/fastdds_profiles.xml` 中的 `sendBufferSize` / `receiveBufferSize`。如果 20M 仍不满足业务需求，可自行修改 FastDDS 配置并同步调大内核参数。临时与持久化修改方法详见 [5.7 通信配置](#57-通信配置)。
+3. **环境变量未加载（报错 Cannot determine type）**：在对特定自定义消息进行操作时，如果当前终端没有先执行 `source /path/to/your/primebot_sdk/install/setup.bash`（需替换为您实际路径），电脑环境里就不存在该消息协议，无法做二进制的反序列化导致报错。
+4. **消息按事件触发（无源数据）**：部分 Topic（如触摸事件），只有在发生物理接触时才会发送数据产生流量。如果您此时监听该 Topic，可能只需实际触发一次（如摸一下机器人头部）即可触发数据产生。
 
 ---
 
@@ -755,6 +771,102 @@ my_project/
 若板卡在开发过程中发生系统级文件误删、网络服务彻底瘫痪、或由于错误装载第三方库导致原厂服务无法拉起的情况：
 **为了防止您丢失核心授权或进一步导致硬件闭锁，我们不建议客户自行使用三方工具强刷固件。**
 如果您的开发面临需要“恢复出厂设置”场景，请您**停止一切危险操作，并及时联系我们的售后服务团队**。
+
+---
+
+### 5.7 通信配置
+
+当出现 `ros2 topic echo` 超时无输出、消息时通时不通、pub/sub 帧率不足、丢帧，或 SDK 提示 `Service not available` 时，除了网络连通性、防火墙和环境变量外，也需要检查 FastDDS 通信配置和内核参数。
+
+**配置原理**
+
+FastDDS profile 决定 DDS 进程使用的传输方式和 socket buffer 等应用侧参数；内核参数决定操作系统允许应用申请的 UDP 收发缓冲区最大上限。如果内核上限小于 FastDDS profile 中的 socket buffer 值，实际通信可能无法获得期望的缓冲区，容易在高频或大包数据场景下出现丢帧/帧率不足或时通时不通。
+
+因此应保证：
+
+```text
+net.core.rmem_max >= receiveBufferSize
+net.core.wmem_max >= sendBufferSize
+```
+
+**默认加载方式**
+
+SDK 在 `aimdk_msgs` 包内提供默认 FastDDS profiles，并通过 ROS 2 `ament_environment_hooks` 安装环境钩子。执行 `colcon build` 后，用户只需加载 SDK 环境：
+
+```bash
+source /path/to/your/primebot_sdk/install/setup.bash
+```
+
+该命令会在当前终端未手动设置 DDS 配置时自动设置：
+
+```text
+RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+FASTRTPS_DEFAULT_PROFILES_FILE=<sdk-install>/share/aimdk_msgs/config/fastdds_profiles.xml
+FASTDDS_DEFAULT_PROFILES_FILE=<sdk-install>/share/aimdk_msgs/config/fastdds_profiles.xml
+```
+
+不要直接修改 `install/setup.bash`；该文件由 colcon 生成，重新构建后可能被覆盖。如需调整 DDS 参数，请修改源码中的 FastDDS profile 后重新构建 SDK。
+
+安装后的配置文件路径为：
+
+```text
+<sdk-install>/share/aimdk_msgs/config/fastdds_profiles.xml
+```
+
+源码路径为：
+
+```text
+aimdk_msgs/config/fastdds_profiles.xml
+```
+
+**当前默认参数**
+
+默认 FastDDS profile 使用 UDPv4 传输，关闭 builtin transports，并将 UDP socket buffer 设置为 20M：
+
+```xml
+<transport_id>aimdk_udp_transport</transport_id>
+<type>UDPv4</type>
+<sendBufferSize>20971520</sendBufferSize>
+<receiveBufferSize>20971520</receiveBufferSize>
+```
+
+对应的 Ubuntu/Linux 内核 UDP 缓冲区上限也应设置为 20M+，并满足上方 `>=` 关系。以下示例统一使用 24M，即 `25165824`。
+
+**修改内核参数：临时生效**
+
+临时方式适合快速验证，系统重启后失效，重启后使用 SDK 前需要重新执行：
+
+```bash
+sudo sysctl -w net.core.rmem_max=25165824
+sudo sysctl -w net.core.wmem_max=25165824
+```
+
+**修改内核参数：持久化生效**
+
+如需在 Ubuntu/Linux 上持久化生效，可写入 `/etc/sysctl.d/99-primebot-sdk.conf`：
+
+```bash
+sudo tee /etc/sysctl.d/99-primebot-sdk.conf >/dev/null <<'EOF'
+net.core.rmem_max = 25165824
+net.core.wmem_max = 25165824
+EOF
+
+sudo sysctl --system
+```
+
+验证当前内核参数：
+
+```bash
+sysctl net.core.rmem_max net.core.wmem_max
+```
+
+以上内核参数命令仅适用于 Ubuntu/Linux，也是本 SDK 当前支持的 ROS 2 Humble 开发环境。其他系统的 `sysctl` 参数名和设置方式不同，请自行查阅对应系统文档，不要直接照抄 Linux 参数。
+
+**调整 FastDDS profile 和内核参数**
+
+如果默认 20M socket buffer 仍不满足业务需求，可修改 `aimdk_msgs/config/fastdds_profiles.xml` 中的 `sendBufferSize` / `receiveBufferSize`，重新执行 `colcon build`，再重新 `source <sdk-install>/setup.bash`。同时需要同步调大系统内核参数，确保 `net.core.rmem_max >= receiveBufferSize` 且 `net.core.wmem_max >= sendBufferSize`。
+
+SDK 配置中已提供 `aimdk_shm_transport` 描述符，但默认 participant 只启用 `aimdk_udp_transport`。如果业务部署在同机多进程场景，可按需额外启用 SHM transport，并根据实际数据量调整 SHM 的 `segment_size` 等参数。SHM、transport descriptors、Data Sharing 等更完整配置请参考 FastDDS 官方文档：https://fast-dds.docs.eprosima.com/en/latest/
 
 ---
 
