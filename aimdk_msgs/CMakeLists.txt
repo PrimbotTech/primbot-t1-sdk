@@ -38,4 +38,15 @@ rosidl_generate_interfaces(
 )
 
 ament_export_dependencies(rosidl_default_runtime)
+
+install(
+  DIRECTORY config/
+  DESTINATION share/${PROJECT_NAME}/config
+  FILES_MATCHING PATTERN "*.xml"
+)
+
+ament_environment_hooks(
+  "${CMAKE_CURRENT_SOURCE_DIR}/env-hooks/aimdk_fastdds.sh.in"
+)
+
 ament_package()

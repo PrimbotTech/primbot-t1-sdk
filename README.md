@@ -13,6 +13,8 @@ primebot_sdk/
 ├── 接口说明.md                         # 全量 Service/Topic 接口定义与参数手册
 ├── 友好用户使用声明.md                  # 友好用户使用声明（必读）
 ├── aimdk_msgs/                        # 接口消息包 (ROS2 msg/srv 定义)
+│   ├── config/                        # SDK 默认 FastDDS 通信配置
+│   ├── env-hooks/                     # colcon setup 自动加载的环境钩子
 │   ├── common/                        # 任务响应与基础类型定义
 │   ├── hal/                           # 硬件抽象层 (音频/相机/触摸/灯带/电池/关节)
 │   ├── interaction/                   # 交互层 (表情播放/TTS)

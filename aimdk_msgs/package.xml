@@ -22,6 +22,7 @@
 
   <!-- Python 运行时 -->
   <exec_depend>python3-rclpy</exec_depend>
+  <exec_depend>rmw_fastrtps_cpp</exec_depend>
   <exec_depend>rosidl_default_runtime</exec_depend>
   <member_of_group>rosidl_interface_packages</member_of_group>
 

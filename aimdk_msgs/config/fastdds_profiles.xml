@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+  <transport_descriptors>
+    <transport_descriptor>
+      <transport_id>aimdk_udp_transport</transport_id>
+      <type>UDPv4</type>
+      <!-- 20M -->
+      <sendBufferSize>20971520</sendBufferSize> 
+      <receiveBufferSize>20971520</receiveBufferSize>
+    </transport_descriptor>
+
+    <transport_descriptor>
+      <transport_id>aimdk_shm_transport</transport_id>
+      <type>SHM</type>
+      <!-- 200M -->
+      <segment_size>209715200</segment_size>
+    </transport_descriptor>
+  </transport_descriptors>
+
+  <participant profile_name="aimdk_default_participant" is_default_profile="true">
+    <rtps>
+      <useBuiltinTransports>false</useBuiltinTransports>
+      <userTransports>
+        <transport_id>aimdk_udp_transport</transport_id>
+      </userTransports>
+    </rtps>
+  </participant>
+</profiles>
