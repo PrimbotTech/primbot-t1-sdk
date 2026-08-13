@@ -90,11 +90,10 @@ public:
     // Print results
     int64_t code = response->response.header.code;
     int32_t state = response->response.state.value;
-    std::string message = response->response.message;
 
     RCLCPP_INFO(this->get_logger(),
-                "Response: code=%ld, state=%d, message='%s'",
-                code, state, message.c_str());
+                "Response: code=%ld, state=%d",
+                code, state);
 
     auto& motions = response->motion;
     RCLCPP_INFO(this->get_logger(), "Total motions: %zu", motions.size());
