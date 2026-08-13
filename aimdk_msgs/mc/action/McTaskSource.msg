@@ -25,5 +25,8 @@ int32 TASK_ENGINE = 6
 # MC 内部自动切换（如 Moving → Stable 稳态复位）
 int32 MC_INTERNAL = 7
 
+# Insta360
+int32 INSTA360 = 8
+
 # 其他
-int32 OTHER = 255
+int32 OTHER       = 255
