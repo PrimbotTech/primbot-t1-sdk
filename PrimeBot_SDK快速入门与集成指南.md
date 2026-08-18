@@ -21,15 +21,20 @@
     - [3.2 C++ 开发集成](#32-c-开发集成)
         - [3.2.1 方式 A：在 SDK 内部新增节点](#321-方式-a在-sdk-内部新增节点)
         - [3.2.2 方式 B：作为独立第三方库集成](#322-方式-b作为独立第三方库集成)
-- [4. 开发者模式说明](#4-开发者模式说明)
-- [5. 常见问题](#5-常见问题)
-    - [5.1 节点发现异常排查](#51-节点发现异常排查)
-    - [5.2 数据收发异常排查](#52-数据收发异常排查)
-    - [5.3 编译异常排查](#53-编译异常排查)
-    - [5.4 机器人域配置](#54-机器人域配置)
-    - [5.5 colcon 安装异常排查](#55-colcon-安装异常排查)
-    - [5.6 登录与设置相关](#56-登录与设置相关)
-    - [5.7 通信配置](#57-通信配置)
+- [4. 机器人板载模块开机自启动接入指南](#4-机器人板载模块开机自启动接入指南)
+    - [4.1 准备启动脚本](#41-准备启动脚本)
+    - [4.2 修改配置文件](#42-修改配置文件)
+    - [4.3 验证](#43-验证)
+    - [4.4 注意事项](#44-注意事项)
+- [5. 开发者模式说明](#5-开发者模式说明)
+- [6. 常见问题](#6-常见问题)
+    - [6.1 节点发现异常排查](#61-节点发现异常排查)
+    - [6.2 数据收发异常排查](#62-数据收发异常排查)
+    - [6.3 编译异常排查](#63-编译异常排查)
+    - [6.4 机器人域配置](#64-机器人域配置)
+    - [6.5 colcon 安装异常排查](#65-colcon-安装异常排查)
+    - [6.6 登录与设置相关](#66-登录与设置相关)
+    - [6.7 通信配置](#67-通信配置)
 
 ---
 
@@ -649,9 +654,161 @@ my_project/
     ./build/my_robot_node
     ```
 
+
+## 4. 机器人板载模块开机自启动接入指南
+
+本节说明如何将自定义模块接入运控板和大脑板开机自启动系统。
+
+> 运控板和大脑板可分别独立配置启动程序，需 SSH 登录到对应板子进行修改。
+
+### 4.1 准备启动脚本
+
+将模块部署到板载路径，推荐放在 `/robot/software/<your_module>/` 下。
+
+启动脚本示例：
+
+```bash
+#!/bin/bash
+# /robot/software/my_module/bin/start_my_module
+
+# 日志路径（由 t1_xxxx_socx_config.yaml 中 apps 的 env 字段注入）
+LOG_PATH="${LOG_PATH:-/tmp/my_module}"
+mkdir -p "$LOG_PATH" 2>/dev/null
+
+# 信号处理（停止时发送 SIGTERM）
+cleanup() { exit 0; }
+trap cleanup SIGTERM SIGINT
+
+# 主循环
+while true; do
+    sleep 5 &
+    wait $!
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [heartbeat] my_module alive" >> "$LOG_PATH/heartbeat.log"
+done
+```
+
+确保 `start_my_module` 文件有执行权限：
+
+```bash
+chmod +x /robot/software/my_module/bin/start_my_module
+```
+
+### 4.2 修改配置文件
+
+SSH 登录机器人后，编辑 `t1_xxxx_socx_config.yaml` 类型的配置文件：
+
+```bash
+# 例如：
+sudo vi /robot/software/process_manager/bin/cfg/t1_v2d_soc0_config.yaml
+```
+
+> 建议先备份
+
+#### 4.2.1 在 `apps` 段添加模块
+
+```yaml
+worker_info:
+    ... (省略)
+
+  node_control_worker:
+    ... (省略)
+
+process_manager:
+    ... (省略)
+
+  cgroup:
+    ... (省略)
+
+  apps:
+    ... (省略)
+
+    # ---- 以下是新增部分 ----
+    "my_module":
+      path: "/robot/software/my_module/bin/start_my_module"
+      sudo: false
+      stderr: "/tmp/my_module.err"
+      env:
+        LOG_PATH: /robot/persist/log/my_module
+```
+
+| 字段 | 是否必填 | 说明 |
+| --- | --- | --- |
+| `path` | 必填 | 启动脚本的**绝对路径** |
+| `sudo` | 必填 | `false` = 以普通用户运行；`true` = 以 root 运行 |
+| `stderr` | 建议填 | 错误日志路径，便于排查问题 |
+| `env` | 选填 | 该模块专属的环境变量 |
+
+#### 4.2.2 在 `startup_stages` 中添加模块名
+
+将 `"my_module"` 加到第二阶段的 `apps` 列表末尾：
+
+```yaml
+  startup_stages:
+    - apps: [
+        "sys_guard", "mc", ...     # 第一阶段（不动）
+      ]
+      delay_after_ms: 1500
+
+    - apps: [
+        "app_proxy",
+        ...
+        "abox",
+        "my_module"                 # ← 加在这里
+      ]
+      delay_after_ms: 8000
+```
+
+### 4.3 验证
+
+#### 4.3.1 手动测试
+
+先手动运行启动脚本，确认无报错：
+
+```bash
+/robot/software/my_module/bin/start_my_module
+```
+
+> 如果未设置 `LOG_PATH` 环境变量，日志将输出到脚本默认路径 `/tmp/my_module/` 下，例如：
+> ```
+> 2026-08-18 06:30:25 [heartbeat] my_module alive
+> ```
+
+#### 4.3.2 重启机器后验证
+
+重启后依次检查：
+
+```bash
+# 查看心跳日志
+cat /robot/persist/log/my_module/heartbeat.log
+
+# 查看错误日志
+cat /tmp/my_module.err
+
+# 查看所有运行模块状态（模块启动成功后会在此列表中显示）
+yamo em doctor
+```
+
+> 心跳日志中出现类似以下内容，说明模块自启动成功：
+> ```
+> 2026-08-18 06:30:25 [heartbeat] my_module alive
+> ```
+
+#### 4.3.3 常用管理命令
+
+```bash
+yamo em stop-app my_module      # 停止
+yamo em start-app my_module     # 启动
+```
+
+### 4.4 注意事项
+
+- `path` 必须是绝对路径，不支持 `~` 或相对路径。
+- 日志建议放在 `/robot/persist/log/` 下，重启后保留；`/tmp/` 下的日志重启后会丢失。
+- 不要删除或修改已有应用的配置，仅添加新条目。
+
 ---
 
-## 4. 开发者模式说明
+## 5. 开发者模式说明
 
 机器人系统采用了多维度、分层级的权限管理架构，以平衡系统的安全性与二次开发的灵活性。通过在机器人终端执行 `yamo mode edit` 指令，开发者可以根据实际需求对系统的开放程度进行精细化编排及选择。
 
@@ -680,8 +837,8 @@ my_project/
 
 ---
 
-## 5. 常见问题
-### 5.1 节点发现异常排查
+## 6. 常见问题
+### 6.1 节点发现异常排查
 
 **Q: 运行 `ros2 node list` 无输出、或仅有 `/rosout`？**
 
@@ -694,7 +851,7 @@ my_project/
 
 ---
 
-### 5.2 数据收发异常排查
+### 6.2 数据收发异常排查
 
 **Q: 节点能看到，但 `ros2 topic echo` 超时无输出、消息时通时不通、pub/sub 帧率不足，或者 SDK 提示 `Service not available`？**
 
@@ -709,7 +866,7 @@ my_project/
 
 ---
 
-### 5.3 编译异常排查
+### 6.3 编译异常排查
 
 **Q: 执行 `colcon build` 编译报错（如提示编译失败或缺少依赖）？**
 
@@ -723,7 +880,7 @@ my_project/
 
 ---
 
-### 5.4 机器人域配置
+### 6.4 机器人域配置
 
 **Q: 同一局域网有多台机器人，如何区分？**
 
@@ -733,7 +890,7 @@ my_project/
 
 ---
 
-### 5.5 colcon 安装异常排查
+### 6.5 colcon 安装异常排查
 
 **Q: 执行 `sudo apt install` 失败或提示“无法定位软件包”？**
 
@@ -760,7 +917,7 @@ my_project/
 
 ---
 
-### 5.6 登录与设置相关
+### 6.6 登录与设置相关
 
 **Q: 如何通过 SSH 登录机器人底层板卡？**
 
@@ -774,7 +931,7 @@ my_project/
 
 ---
 
-### 5.7 通信配置
+### 6.7 通信配置
 
 当出现 `ros2 topic echo` 超时无输出、消息时通时不通、pub/sub 帧率不足、丢帧，或 SDK 提示 `Service not available` 时，除了网络连通性、防火墙和环境变量外，也需要检查 FastDDS 通信配置和内核参数。
 

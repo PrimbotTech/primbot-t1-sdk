@@ -1,8 +1,0 @@
-# Request 部分
-CommonTaskRequest request
-
----
-
-CommonTaskResponse response
-
-McRuntimeModel runtime_model
