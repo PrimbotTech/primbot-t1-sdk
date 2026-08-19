@@ -1,9 +1,6 @@
 # 当前运行的Action
 McAction current_action
 
-# 当前action的触发源
-string source
-
 # 描述
 string action_desc
 
