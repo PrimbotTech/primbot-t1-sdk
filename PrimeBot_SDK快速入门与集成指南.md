@@ -772,7 +772,7 @@ process_manager:
 > 2026-08-18 06:30:25 [heartbeat] my_module alive
 > ```
 
-> 如果未设置 `LOG_PATH` 环境变量，日志将输出到脚本默认路径 `/tmp/my_module/` 下，例如：
+> 如果未设置 `LOG_PATH` 环境变量，日志将输出到脚本默认路径 `/tmp/my_module/` 下
 
 #### 4.3.2 重启机器后验证
 
