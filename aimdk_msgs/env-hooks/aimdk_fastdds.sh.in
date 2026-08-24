@@ -2,7 +2,8 @@ if [ -z "$RMW_IMPLEMENTATION" ]; then
   export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
 fi
 
-_aimdk_fastdds_profiles="$AMENT_CURRENT_PREFIX/share/aimdk_msgs/config/fastdds_profiles.xml"
+_aimdk_prefix="${COLCON_CURRENT_PREFIX:-$AMENT_CURRENT_PREFIX}"
+_aimdk_fastdds_profiles="$_aimdk_prefix/share/aimdk_msgs/config/fastdds_profiles.xml"
 
 if [ -f "$_aimdk_fastdds_profiles" ]; then
   if [ -z "$FASTRTPS_DEFAULT_PROFILES_FILE" ] && [ -z "$FASTDDS_DEFAULT_PROFILES_FILE" ]; then
@@ -16,3 +17,4 @@ if [ -f "$_aimdk_fastdds_profiles" ]; then
 fi
 
 unset _aimdk_fastdds_profiles
+unset _aimdk_prefix
