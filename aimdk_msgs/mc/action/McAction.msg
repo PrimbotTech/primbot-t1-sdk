@@ -106,6 +106,15 @@ int32 QUADRUPED_CROUCH_DEFAULT = 120
 # 四足踏步模式
 int32 QUADRUPED_LOCOMOTION_STEP = 121
 
+# 四足前肢手臂反轴站立
+int32 QUADRUPED_STAND_REVERSE_DEFAULT = 122
+
+# 四足反向行走模式
+int32 QUADRUPED_LOCOMOTION_REVERSE_DEFAULT = 123
+
+# 四足姿态调整
+int32 QUADRUPED_BODY_ADJUST_DEFAULT = 124
+
 # ============================================================================
 # 两足相关动作 (200-299)
 # ============================================================================
@@ -203,3 +212,12 @@ int32 BIPED_SIT_DOWN = 1013
 
 # 二开上肢控制
 int32 BIPED_CUSTOM_UPPER = 1014
+
+# 超能模式/跑步模式
+int32 BIPED_RUN = 1015
+
+# 入座
+int32 BIPED_TAKE_SEAT = 1016
+
+# 离座
+int32 BIPED_LEAVE_SEAT = 1017
