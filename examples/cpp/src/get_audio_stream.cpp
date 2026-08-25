@@ -127,9 +127,52 @@ private:
 
       RCLCPP_INFO(this->get_logger(), "Starting 24kHz playback...");
       stream_to_robot(processed_file);
-    } 
+    }
+    else if (last_info_.sample_rate == 48000) {
+      RCLCPP_INFO(this->get_logger(), "Processing 8ch 48kHz audio to 1ch 24kHz...");
+
+      std::string processed_file = output_file_;
+      size_t pos = processed_file.find_last_of(".");
+      processed_file.insert(pos != std::string::npos ? pos : processed_file.length(), "_24k_mono");
+
+      std::ifstream fin(output_file_, std::ios::binary);
+      std::ofstream fout(processed_file, std::ios::binary);
+
+      if (!fin || !fout) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to open files");
+        return;
+      }
+
+      // 原始8声道S16LE单帧步长：8声道 * 2字节每采样点
+      int input_stride = last_info_.channels * 2;
+      std::vector<char> frame(input_stride);
+      int read_count = 0;
+
+      while (fin.read(frame.data(), frame.size())) {
+        read_count++;
+        // 仅保留奇数位采样点，实现48kHz到24kHz的降采样
+        if (read_count % 2 != 0) {
+          // 把当前8声道帧的所有采样点累加取平均，得到单声道采样值
+          int total_sample = 0;
+          for (int ch = 0; ch < 8; ++ch) {
+            int16_t sample;
+            std::memcpy(&sample, frame.data() + ch * 2, 2);
+            total_sample += sample;
+          }
+          int16_t mono_sample = static_cast<int16_t>(total_sample / 8);
+          fout.write(reinterpret_cast<char*>(&mono_sample), 2);
+        }
+      }
+
+      RCLCPP_INFO(this->get_logger(),
+                  "Convert finished! Output file: %s, param: 1 channel, 24000Hz, S16_LE PCM",
+                  processed_file.c_str());
+      stream_to_robot(processed_file);
+    }
     else {
-      RCLCPP_WARN(this->get_logger(), "Unsupported sample rate: %dHz", last_info_.sample_rate);
+      RCLCPP_WARN(this->get_logger(),
+                  "Unsupported sample rate: %dHz. Expected 16000 or 24000 Hz or 48000Hz. Skipping playback.",
+                  last_info_.sample_rate);
     }
   }
 

@@ -74,7 +74,7 @@ class SetMcPresetMotionClient(Node):
     def ensure_ready_state(self) -> bool:
         switcher = McActionSwitcher(self)
         options = McActionSwitchOptions(
-            source="preset_motion",
+            source="sdk_rpc",
             total_timeout=30.0,
         )
         result = switcher.switch_to("BIPED_LOCOMOTION_WBC", options)
@@ -94,7 +94,7 @@ class SetMcPresetMotionClient(Node):
         request = SetMcPresetMotion.Request()
         request.header = RequestHeader()
         request.header.stamp = self.get_clock().now().to_msg()
-        request.source = 'preset_motion'
+        request.source = 'sdk_rpc'
         request.motion = McPresetMotion()
         request.motion.value = motion_id
         request.interrupt = True
@@ -115,13 +115,69 @@ class SetMcPresetMotionClient(Node):
                 f'code={res.response.header.code} status={res.response.state.value} '
                 f'reason={res.response.state.reason}'
             )
+        return False
+
+    def send_custom_motion_request(self, ani_path: str) -> bool:
+        """Send a custom motion file (from teaching) playback request."""
+        if not self.ensure_ready_state():
+            self.get_logger().error('Failed to prepare robot state for custom motion.')
             return False
+
+        request = SetMcPresetMotion.Request()
+        request.header = RequestHeader()
+        request.header.stamp = self.get_clock().now().to_msg()
+        request.source = 'sdk_rpc'
+        request.motion = McPresetMotion()
+        request.motion.value = 0  # not using built-in enum
+        request.interrupt = True
+        request.ani_path = ani_path  # custom motion file path
+
+        self.get_logger().info(f'Sending custom motion request: path={ani_path}')
+
+        future = self.call_service_with_retry(
+            self.preset_client, request, "SetMcPresetMotion"
+        )
+        if future is None:
+            return False
+
+        res = future.result()
+        if res and res.response.header.code == 0:
+            self.get_logger().info(f'Custom motion request accepted. Task ID: {res.response.task_id}')
+            return True
+
+        if res:
+            self.get_logger().error(
+                f'SetMcPresetMotion (custom) failed. '
+                f'code={res.response.header.code} status={res.response.state.value} '
+                f'reason={res.response.state.reason}'
+            )
+
+        return False
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = None
     try:
+        # Choose between built-in preset and custom motion file
+        print("\nOptions:")
+        print("  [1] Play built-in preset motion")
+        print("  [2] Play custom motion file (from teaching)")
+        choice = input("Enter choice (1/2): ").strip()
+
+        if choice == "2":
+            file_path = input(
+                "Enter custom motion file path "
+                "(e.g. /robot/userdata/sd/custom_motions/my_motion.csv): "
+            ).strip()
+            if not file_path:
+                print("No path provided. Exiting.")
+                sys.exit(1)
+            node = SetMcPresetMotionClient()
+            node.send_custom_motion_request(file_path)
+            return
+
+        # Built-in preset motion flow
         print("\nPlease refer to the interface documentation for the list of supported motions for this model.")
         print("If you haven't found the motion list, you can choose recommended motions based on the robot model.")
         robot_series = input("\nEnter robot series (Q/T): ").strip().upper()

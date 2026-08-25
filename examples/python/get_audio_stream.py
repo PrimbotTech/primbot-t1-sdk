@@ -101,7 +101,7 @@ class AudioStreamSubscriber(Node):
             except Exception as e:
                 self.get_logger().error(f"Playback failed: {e}")
         
-        if self.audio_info.sample_rate == 16000:
+        elif self.audio_info.sample_rate == 16000:
             """根据硬件规约重采样：16k -> 24k (2点变3点)"""
             processed_file = self.output_file.replace(".pcm", "_playback.pcm")
             self.get_logger().info(f"Resampling audio: 16k -> 24k linear interpolation...")
@@ -129,11 +129,40 @@ class AudioStreamSubscriber(Node):
                 self.stream_play(processed_file)
             except Exception as e:
                 self.get_logger().error(f"Resampling failed: {e}")
+    
+        elif self.audio_info.sample_rate == 48000:
+            processed_file = self.output_file.replace(".pcm", "_24k_mono.pcm")
+            self.get_logger().info(f"Processing 8ch 48kHz audio to 1ch 24kHz...")
+            try:
+                # 原始8声道S16LE单帧步长：8声道 * 2字节每采样点
+                input_stride = self.audio_info.channels * 2
+                with open(self.output_file, "rb") as f_in, open(processed_file, "wb") as f_out:
+                    read_count = 0
+                    while True:
+                        # 读取一帧8声道的完整采样点
+                        frame_data = f_in.read(input_stride)
+                        if len(frame_data) < input_stride:
+                            break
+                        read_count += 1
+                        # 仅保留偶数位采样点，实现48kHz到24kHz的降采样
+                        if read_count % 2 != 0:
+                        # 把当前8声道帧的所有采样点累加取平均，得到单声道采样值
+                            total_sample = 0
+                            for ch_idx in range(8):
+                                sample = struct.unpack('<h', frame_data[ch_idx*2 : ch_idx*2+2])[0]
+                                total_sample += sample
+                            mono_sample = total_sample // 8
+                            f_out.write(struct.pack('<h', mono_sample))
+                self.get_logger().info(f"Convert finished! Output file: {processed_file}, param: 1 channel, 24000Hz, S16_LE PCM")
+                # 调用原有播放接口完成输出
+                self.stream_play(processed_file)
+            except Exception as e:
+                self.get_logger().error(f"48kHz audio process failed: {e}")
         
         else:
             self.get_logger().warning(
                 f"Unsupported sample rate: {self.audio_info.sample_rate}Hz. "
-                f"Expected 16000 or 24000 Hz. Skipping playback."
+                f"Expected 16000 or 24000 Hz or 48000Hz. Skipping playback."
             )
 
     def stream_play(self, filename: str) -> None:
