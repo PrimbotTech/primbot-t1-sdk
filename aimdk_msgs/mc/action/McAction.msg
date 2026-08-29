@@ -106,15 +106,6 @@ int32 QUADRUPED_CROUCH_DEFAULT = 120
 # 四足踏步模式
 int32 QUADRUPED_LOCOMOTION_STEP = 121
 
-# 四足前肢手臂反轴站立
-int32 QUADRUPED_STAND_REVERSE_DEFAULT = 122
-
-# 四足反向行走模式
-int32 QUADRUPED_LOCOMOTION_REVERSE_DEFAULT = 123
-
-# 四足姿态调整
-int32 QUADRUPED_BODY_ADJUST_DEFAULT = 124
-
 # ============================================================================
 # 两足相关动作 (200-299)
 # ============================================================================
@@ -134,9 +125,6 @@ int32 BIPED_LOCOMOTION_TERRAIN = 203
 # 双足原地旋转
 int32 BIPED_LOCOMOTION_ROTATE_LOCAL = 204
 
-# 双足下腰模式
-int32 BIPED_LOCOMOTION_BACKBEND = 205
-
 # 双足太空步
 int32 BIPED_LOCOMOTION_MOONWALK = 206
 
@@ -145,12 +133,6 @@ int32 BIPED_LOCOMOTION_RUN = 207
 
 # 双足模仿动作
 int32 BIPED_MIMIC = 208
-
-# 双足羽生结弦
-int32 BIPED_YUZURU = 209
-
-# 双足劈叉
-int32 BIPED_SPLIT = 210
 
 # 双足全身控制模式
 int32 BIPED_LOCOMOTION_WBC = 300
@@ -163,9 +145,6 @@ int32 BIPED_RECORD_UPPER = 302
 
 # 双足 gimbal 轨迹移动模式
 int32 BIPED_GIMBAL = 303
-
-# 双足转圈
-int32 BIPED_MIMIC_ROTATE_DANCE = 400 
 
 # ============================================================================
 # Q 系列Action
