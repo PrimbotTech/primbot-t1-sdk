@@ -34,6 +34,8 @@
     - [6.5 colcon 安装异常排查](#65-colcon-安装异常排查)
     - [6.6 登录与设置相关](#66-登录与设置相关)
     - [6.7 通信配置](#67-通信配置)
+    - [6.8 日志导出与问题反馈](#68-日志导出与问题反馈)
+    - [6.9 系统资源占用情况查询](#69-系统资源占用情况查询)
 
 ---
 
@@ -1023,6 +1025,71 @@ sysctl net.core.rmem_max net.core.wmem_max
 如果默认 20M socket buffer 仍不满足业务需求，可修改 `aimdk_msgs/config/fastdds_profiles.xml` 中的 `sendBufferSize` / `receiveBufferSize`，重新执行 `colcon build`，再重新 `source <sdk-install>/setup.bash`。同时需要同步调大系统内核参数，确保 `net.core.rmem_max >= receiveBufferSize` 且 `net.core.wmem_max >= sendBufferSize`。
 
 SDK 配置中已提供 `aimdk_shm_transport` 描述符，但默认 participant 只启用 `aimdk_udp_transport`。如果业务部署在同机多进程场景，可按需额外启用 SHM transport，并根据实际数据量调整 SHM 的 `segment_size` 等参数。SHM、transport descriptors、Data Sharing 等更完整配置请参考 FastDDS 官方文档：https://fast-dds.docs.eprosima.com/en/latest/
+
+### 6.8 日志导出与问题反馈
+
+当遇到难以自行排查的问题时，建议在联系售后技术支持前先导出相关日志，以便快速定位问题。
+
+**1. 查看机器人软件版本**
+
+可通过 SSH 登录后在终端界面查看机器人软件版本。
+
+**2. 导出板载日志**
+
+SSH 登录机器人对应板卡（运控板或大脑板），将日志目录打包：
+
+```bash
+# 打包系统日志
+tar -czf /tmp/robot_logs_$(date +%Y%m%d_%H%M%S).tar.gz /robot/persist/log/
+
+# 打包 ROS2 Bag 数据包（如有）
+tar -czf /tmp/robot_bags_$(date +%Y%m%d_%H%M%S).tar.gz /robot/persist/bag/
+```
+
+打包完成后，通过 `scp` 将日志文件传输到开发 PC：
+
+```bash
+# 在开发 PC 上执行
+scp run@<板卡IP>:/tmp/robot_logs_*.tar.gz ./
+scp run@<板卡IP>:/tmp/robot_bags_*.tar.gz ./
+```
+
+**3. 查看模块运行状态**
+
+在反馈问题时，附上当前模块状态快照有助于快速定位：
+
+```bash
+# 查看各模块运行状态
+yamo em doctor
+
+# 查看 ROS2 节点列表
+ros2 node list
+
+# 查看 ROS2 Topic 列表
+ros2 topic list -t
+```
+
+> **提示**：反馈问题时，建议将机器人软件版本、SDK 版本、导出的日志文件、模块运行状态截图、以及问题的复现步骤一并提供给售后技术支持团队，以加快问题定位与解决。
+
+### 6.9 系统资源占用情况查询
+
+当机器人出现卡顿、响应延迟或异常行为时，请先检查板卡系统的 CPU、内存和磁盘等资源占用情况：
+
+```bash
+# 实时查看进程 CPU / 内存占用（按 CPU 排序）
+top -o %CPU
+
+# 查看整体内存使用情况
+free -h
+
+# 查看磁盘空间使用情况
+df -h
+
+# 查看指定进程的 CPU 占用（例如 mc 进程）
+top -b -n 1 | grep mc
+```
+
+> **注意**：若 CPU 占用长期超过 90%、可用内存低于 200MB 或磁盘剩余空间不足 10%，可能导致机器人运行异常，请及时清理或联系售后技术支持。
 
 ---
 
