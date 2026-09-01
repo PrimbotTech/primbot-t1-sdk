@@ -1,0 +1,11 @@
+# 主动关机接口（task engine 层）
+
+# 请求头
+CommonRequest header
+
+# 来源如果为空, 则拒绝执行
+TokenCommon token
+
+---
+# 响应头
+CommonResponse header
