@@ -27,6 +27,15 @@ string resource
 # 是否打断(给后面animation接口合并预留)
 bool interrupt
 
+# 操作类型
+int32 operation
+
+# 预先加载
+int32 PRELOAD = 1
+
+# 开始执行
+int32 EXECUTION = 2
+
 ---
 
 # 响应头
