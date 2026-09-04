@@ -7,7 +7,6 @@ find_package(aimdk_msgs REQUIRED)
 find_package(OpenCV 4.13.0 EXACT REQUIRED CONFIG COMPONENTS core imgproc imgcodecs videoio)
 find_package(ruckig_for_primebot REQUIRED)
 set(EXAMPLE_TARGETS
-  get_audio_stream
   get_bms_state
   get_jpg
   get_touch_state
@@ -17,8 +16,10 @@ set(EXAMPLE_TARGETS
   play_audio
   play_emotion
   play_lights
+  record_audio
   set_mc_action
   set_preset_motion
+  shutdown_task
   volume_control
   upper_body_control
 )

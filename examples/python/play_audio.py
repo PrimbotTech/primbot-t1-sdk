@@ -1,163 +1,233 @@
 #!/usr/bin/env python3
 
-"""Audio Playback Example Script
+"""Play Audio Example
 
-Description:
-  This script demonstrates how to play audio files on the robot using the PlayAudioFile
-  service. Supports specifying audio file name and directory path. Default sample rate is 24kHz.
+通过 PulseAudio TCP 协议（simple-protocol-tcp）将音频文件发送到机器人扬声器播放。
 
-Prerequisites:
-  - PlayAudioFile service must be available
-  - Audio file must exist on the robot at the specified path
-  - Audio file must be 24kHz, 16-bit PCM, mono WAV format
+支持格式：
+  - WAV 文件：自动检测 RIFF 头，转换为 48kHz mono S16LE
+  - PCM 文件：48kHz mono S16LE，直接传输
+  - 多声道 WAV 自动智能混音：识别活跃通道，避免静音通道稀释信号
+  - 非 48kHz 采样率自动重采样
 
-Usage:
-  python3 play_audio.py --ros-args -p file_name:=<name> -p file_path:=<path>
+前提条件：
+  示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）。
 
-Parameters:
-  - file_name: Audio file name (Default: 小星星.wav)
-  - file_path: Directory containing the audio file
+用法：
+  python3 play_audio.py <机器人IP> <音频文件>
 
-Example:
-  python3 play_audio.py --ros-args -p file_name:=小星星.wav -p file_path:=/robot/software/aimrt_agent/bin/cfg/t1/audio
+示例：
+  python3 play_audio.py 172.31.8.168 mic_mono.wav
 """
 
-import rclpy
-import rclpy.logging
+import socket
+import subprocess
+import sys
+import signal
+import struct
 import time
-from rclpy.node import Node
+import wave
+from io import BytesIO
 
-from aimdk_msgs.msg import CommonRequest, CommonState
+# ===== Configuration (must match robot-side pactl parameters) =====
+RATE = 48000       # Robot speaker native sample rate
+CHANNELS = 1       # Mono
+SAMPLE_WIDTH = 2   # 16-bit = 2 bytes
+PORT = 6001
 
-from aimdk_msgs.srv import PlayAudioFile
+
+def setup_robot_audio_tcp(robot_ip):
+    """Auto-load PulseAudio TCP playback module on robot via SSH."""
+    cmd = (
+        'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '
+        '"pactl load-module module-simple-protocol-tcp '
+        'sink=@DEFAULT_SINK@ playback=true port=%d '
+        'format=s16le rate=%d channels=%d listen=0.0.0.0"'
+        % (robot_ip, PORT, RATE, CHANNELS)
+    )
+    try:
+        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
+        print("已在机器人端加载播放模块 (端口 %d)" % PORT)
+    except KeyboardInterrupt:
+        print("\n已取消")
+        sys.exit(0)
+    except Exception:
+        pass  # Module may already be loaded
 
 
-class PlayAudioFileClient(Node):
-    def __init__(self):
-        super().__init__("play_audio_file_client")
-        self.file_name = self.declare_parameter("file_name", "小星星.wav").value
-        self.file_path = self.declare_parameter("file_path", "/robot/software/aimrt_agent/bin/cfg/t1/audio").value
+def is_wav_data(data):
+    """Check if data starts with RIFF header (WAV format)."""
+    return len(data) >= 4 and data[:4] == b"RIFF"
 
-        self.service_name = "/aimdk_5Fmsgs/srv/PlayAudioFile"
-        self.pkg_name = "sdk_demo"
-        self.sample_format = "S16_LE"
-        self.coding_format = "wave"
-        self.channels = 1
-        self.sample_rate = 24000
-        self.size = 0
-        self.priority = 6
-        self.priority_weight = 0
 
-        self.client = self.create_client(PlayAudioFile, self.service_name)
-        self.get_logger().info("PlayAudioFile client node created.")
+def load_wav_as_pcm(data):
+    """Load WAV data from bytes buffer and convert to 48kHz mono S16LE PCM bytes.
 
-    def wait_for_service(self) -> bool:
-        while not self.client.wait_for_service(timeout_sec=2.0):
-            if not rclpy.ok():
-                return False
-            self.get_logger().info(f"Waiting for service: {self.service_name}")
-        self.get_logger().info("Service available, ready to send request.")
-        return True
+    Handles:
+      - Any sample rate (resamples to 48kHz)
+      - Multi-channel (mixes down to mono)
+      - 16-bit PCM format
 
-    def send_request(self) -> bool:
-        if not self.wait_for_service():
-            return False
+    Returns:
+        PCM bytes ready for streaming.
+    """
+    with wave.open(BytesIO(data), "rb") as wf:
+        src_rate = wf.getframerate()
+        src_channels = wf.getnchannels()
+        src_sampwidth = wf.getsampwidth()
+        n_frames = wf.getnframes()
+
+        if src_sampwidth != 2:
+            print("警告: 仅支持 16-bit PCM WAV，当前 %d-bit" % (src_sampwidth * 8))
+            sys.exit(1)
+
+        print("WAV 格式: %dHz, %dch, 16bit, %d帧 (%.1f秒)" % (
+            src_rate, src_channels, n_frames, n_frames / src_rate))
+
+        raw = wf.readframes(n_frames)
+
+    # Parse samples
+    n_samples = len(raw) // 2
+    samples = struct.unpack("<%dh" % n_samples, raw)
+
+    # Mix down to mono if multi-channel
+    if src_channels > 1:
+        # Find active channels: per-channel peak, only mix channels with signal
+        ch_peaks = [0] * src_channels
+        for i in range(0, n_samples, src_channels):
+            for c in range(min(src_channels, n_samples - i)):
+                a = abs(samples[i + c])
+                if a > ch_peaks[c]:
+                    ch_peaks[c] = a
+
+        # A channel is "active" if its peak exceeds a noise floor
+        active = [c for c in range(src_channels) if ch_peaks[c] > 200]
+        if not active:
+            active = list(range(src_channels))  # all quiet, use all
+
+        print("混音: %d 声道 -> 单声道 (活跃通道: %s)" % (
+            src_channels, ", ".join("ch%d" % (c + 1) for c in active)))
+        print("各声道峰值: %s" % " ".join("ch%d=%d" % (c + 1, ch_peaks[c]) for c in range(src_channels)))
+
+        mono_samples = []
+        for i in range(0, n_samples, src_channels):
+            s = 0
+            for c in active:
+                if i + c < n_samples:
+                    s += samples[i + c]
+            avg = s // len(active)
+            mono_samples.append(int(max(-32768, min(32767, avg))))
+        samples = mono_samples
+        n_samples = len(samples)
+
+    # Resample if not 48kHz
+    if src_rate != RATE:
+        print("重采样: %dHz -> %dHz" % (src_rate, RATE))
+        ratio = RATE / src_rate
+        new_len = int(n_samples * ratio)
+        resampled = []
+        for i in range(new_len):
+            src_idx = i / ratio
+            idx_low = int(src_idx)
+            idx_high = min(idx_low + 1, n_samples - 1)
+            frac = src_idx - idx_low
+            # Linear interpolation
+            val = samples[idx_low] * (1 - frac) + samples[idx_high] * frac
+            resampled.append(int(max(-32768, min(32767, val))))
+        samples = resampled
+
+    return struct.pack("<%dh" % len(samples), *samples)
+
+
+def load_file(path):
+    """Load file as raw bytes from local path."""
+    try:
+        with open(path, "rb") as f:
+            return f.read()
+    except IOError:
+        print("错误: 无法打开本地文件: %s" % path)
+        sys.exit(1)
+
+
+def main():
+    if len(sys.argv) < 3:
+        print("用法: %s <机器人IP> <audio_file>" % sys.argv[0])
+        print("支持格式: .pcm (48kHz mono S16LE), .wav (自动转换)")
+        sys.exit(1)
+
+    robot_ip = sys.argv[1]
+    audio_file = sys.argv[2]
+
+    stop = False
+
+    def on_signal(*_):
+        nonlocal stop
+        stop = True
+    signal.signal(signal.SIGINT, on_signal)
+
+    # Auto-load TCP playback module on robot via SSH
+    setup_robot_audio_tcp(robot_ip)
+
+    # Load raw file data (local)
+    raw = load_file(audio_file)
+
+    # Auto-detect format and convert to PCM
+    if is_wav_data(raw):
+        print("检测到 WAV 文件，正在转换...")
+        pcm_data = load_wav_as_pcm(raw)
+        print("转换完成: %d 字节 (%.1f 秒)" % (len(pcm_data), len(pcm_data) / (RATE * CHANNELS * SAMPLE_WIDTH)))
+    else:
+        print("按 PCM 格式使用 (假设 48kHz mono S16LE)")
+        pcm_data = raw
+
+    # Connect to robot
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(5)  # 5 second connection timeout
+    try:
+        sock.connect((robot_ip, PORT))
+    except (ConnectionRefusedError, OSError) as e:
+        if isinstance(e, ConnectionRefusedError):
+            print("连接被拒绝，请检查机器人 IP 是否正确以及 TCP 播放模块是否已加载。")
+        else:
+            print("连接失败: %s" % e)
+            print("请检查机器人 IP 是否正确，以及网络是否可达")
+        sys.exit(1)
+    sock.settimeout(None)
+
+    print("已连接 %s:%d，播放 %s ..." % (robot_ip, PORT, audio_file))
+
+    # Streaming parameters
+    bytes_per_sec = RATE * CHANNELS * SAMPLE_WIDTH  # 96000 bytes/sec
+    chunk_duration = 0.1  # 100ms per chunk
+    chunk_bytes = int(bytes_per_sec * chunk_duration)  # 9600 bytes
+
+    total = 0
+    offset = 0
+    next_send_time = time.monotonic()
+
+    while not stop and offset < len(pcm_data):
+        chunk = pcm_data[offset:offset + chunk_bytes]
+        offset += len(chunk)
 
         try:
-            request = PlayAudioFile.Request()
-            request.request = CommonRequest()
-            request.request.header.stamp = self.get_clock().now().to_msg()
+            sock.sendall(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            print("\n连接断开")
+            break
 
-            # pkg_name/file_name/file_path locate the audio resource; info describes its format.
-            request.file.pkg_name = self.pkg_name
-            request.file.file_name = self.file_name
-            request.file.file_path = self.file_path
+        total += len(chunk)
+        print("\r已播放 %.1f / %.1f 秒" % (
+            total / bytes_per_sec, len(pcm_data) / bytes_per_sec), end="", flush=True)
 
-            if not request.file.file_name:
-                self.get_logger().error("file_name is empty.")
-                return False
+        # Precise timing: compensate for network and processing delay
+        next_send_time += chunk_duration
+        sleep_time = next_send_time - time.monotonic()
+        if sleep_time > 0:
+            time.sleep(sleep_time)
 
-            request.file.info.channels = self.channels
-            request.file.info.sample_rate = self.sample_rate
-            request.file.info.size = self.size
-            request.file.info.sample_format = self.sample_format
-            request.file.info.coding_format = self.coding_format
-            request.file.priority = self.priority
-            request.file.priority_weight = self.priority_weight
-
-            self.get_logger().info(
-                "Sending PlayAudioFile request: "
-                f"file={request.file.file_name}, "
-                f"path={request.file.file_path}, "
-                f"pkg={request.file.pkg_name}, "
-                f"ch={self.channels}, "
-                f"sr={self.sample_rate}, "
-                f"fmt={self.sample_format}, "
-                f"coding={self.coding_format}, "
-                f"priority={self.priority}, "
-                f"weight={self.priority_weight}"
-            )
-
-            for i in range(3):
-                future = self.client.call_async(request)
-                rclpy.spin_until_future_complete(self, future, timeout_sec=5)
-
-                if future.done():
-                    break
-
-                self.get_logger().info(f'trying ... [{i}]')
-                time.sleep(0.2)
-            
-            if not future.done():
-                self.get_logger().error("PlayAudioFile call failed or timed out.")
-                return False
-
-            response = future.result()
-            if response is None:
-                self.get_logger().error("PlayAudioFile call failed or timed out.")
-                return False
-
-            code = response.response.header.code
-            status = response.response.status.value
-            # Treat code==0 or status==SUCCESS as success.
-            ok = code == 0 or status == CommonState.SUCCESS
-
-            if ok:
-                self.get_logger().info(
-                    "PlayAudioFile accepted. "
-                    f"code={code} status={status} msg={response.response.message}"
-                )
-                return True
-
-            self.get_logger().error(
-                f"PlayAudioFile failed. "
-                f"code={code} status={status} "
-                f"msg={response.response.message}"
-            )
-            return False
-        except Exception as error:  # noqa: BLE001
-            self.get_logger().error(f"Exception occurred: {error}")
-            return False
-
-
-def main(args=None):
-    rclpy.init(args=args)
-    node = None
-    try:
-        node = PlayAudioFileClient()
-        ok = node.send_request()
-        return 0 if ok else 1
-    except Exception as error:  # noqa: BLE001
-        rclpy.logging.get_logger("main").error(
-            f"Program exited with exception: {error}"
-        )
-        return 1
-    finally:
-        if node is not None:
-            node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+    print("\n播放结束")
+    sock.close()
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()
