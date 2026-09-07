@@ -353,14 +353,24 @@ class VolumeControlClient(Node):
             self.get_logger().info(f"Restoring original volume: {self.original_volume_}")
             if not self.execute_volume_step(self.original_volume_, "恢复原始音量"):
                 self.get_logger().warning("Failed to restore original volume.")
+        else:
+            self.get_logger().info(
+                "Volume restoration skipped (initial volume unknown)."
+            )
+
+        # Always ensure unmuted at the end
+        self.get_logger().info("Ensuring unmuted state before exit.")
+        if not self.execute_mute_step(False, "取消静音"):
+            self.get_logger().warning("Failed to ensure unmuted state.")
+
+        if self.original_volume_ is not None:
             self.get_logger().info(
                 f"Volume control demo finished. Volume restored to {self.original_volume_}, mute=false. "
                 f"(Check logs for any failed steps)"
             )
         else:
             self.get_logger().info(
-                "Volume control demo finished. Volume restoration skipped "
-                "(initial volume unknown). (Check logs for any failed steps)"
+                "Volume control demo finished. (Check logs for any failed steps)"
             )
         return True
 

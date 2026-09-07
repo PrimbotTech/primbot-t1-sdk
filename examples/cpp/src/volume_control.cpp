@@ -160,13 +160,24 @@ class VolumeControlClient : public rclcpp::Node
       if (!execute_volume_step(original_volume_, "恢复原始音量")) {
         RCLCPP_WARN(this->get_logger(), "Failed to restore original volume.");
       }
+    } else {
+      RCLCPP_INFO(this->get_logger(),
+                  "Volume restoration skipped (initial volume unknown).");
+    }
+
+    // Always ensure unmuted at the end
+    RCLCPP_INFO(this->get_logger(), "Ensuring unmuted state before exit.");
+    if (!execute_mute_step(false, "取消静音")) {
+      RCLCPP_WARN(this->get_logger(), "Failed to ensure unmuted state.");
+    }
+
+    if (has_original_volume_) {
       RCLCPP_INFO(this->get_logger(),
                   "Volume control demo finished. Volume restored to %u, "
                   "mute=false. (Check logs for any failed steps)", original_volume_);
     } else {
       RCLCPP_INFO(this->get_logger(),
-                  "Volume control demo finished. Volume restoration skipped "
-                  "(initial volume unknown). (Check logs for any failed steps)");
+                  "Volume control demo finished. (Check logs for any failed steps)");
     }
     return true;
   }
