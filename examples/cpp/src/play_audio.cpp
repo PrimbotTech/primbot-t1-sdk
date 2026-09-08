@@ -13,12 +13,13 @@
 
  @prerequisites
    示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）。
+   先检查模块是否已加载，已加载则跳过。
 
  @usage
    ./play_audio <机器人IP> <音频文件>
 
  @example
-   ./play_audio 172.31.8.168 mic_mono.wav
+   ./play_audio <机器人IP> mic_mono.wav
  */
 
 #include <algorithm>
@@ -57,19 +58,40 @@ static void signal_handler(int) { g_stop.store(true); }
 // ---------------------------------------------------------------------------
 
 static void setup_robot_audio_tcp(const char *robot_ip) {
-  char cmd[512];
+  // 先检查模块是否已加载，已加载则跳过，避免重复输入密码
+  char cmd[1024];
   snprintf(cmd, sizeof(cmd),
-           "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s "
-           "\"pactl load-module module-simple-protocol-tcp "
+           "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '"
+           "if pactl list modules short 2>/dev/null | grep -q module-simple-protocol-tcp; then "
+           "echo MODULE_ALREADY_LOADED; "
+           "else "
+           "pactl load-module module-simple-protocol-tcp "
            "sink=@DEFAULT_SINK@ playback=true port=%d "
-           "format=s16le rate=%d channels=%d listen=0.0.0.0\" "
-           "2>/dev/null",
+           "format=s16le rate=%d channels=%d listen=0.0.0.0 && "
+           "echo MODULE_LOADED; "
+           "fi'",
            robot_ip, kPort, kRate, kChannels);
-  int ret = system(cmd);
-  if (ret == 0) {
-    printf("已在机器人端加载播放模块 (端口 %d)\n", kPort);
+
+  FILE *fp = popen(cmd, "r");
+  if (!fp) {
+    printf("SSH 连接失败\n");
+    return;
   }
-  // Non-zero is fine — module may already be loaded
+  std::string output;
+  char buf[256];
+  while (fgets(buf, sizeof(buf), fp)) {
+    output += buf;
+  }
+  int ret = pclose(fp);
+  (void)ret;
+
+  if (output.find("MODULE_ALREADY_LOADED") != std::string::npos) {
+    printf("播放模块已在机器人端加载（跳过加载）\n");
+  } else if (output.find("MODULE_LOADED") != std::string::npos) {
+    printf("已在机器人端加载播放模块 (端口 %d)\n", kPort);
+  } else {
+    printf("警告: 播放模块加载可能未成功（stderr 已输出到终端）\n");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -404,6 +426,10 @@ int main(int argc, char *argv[]) {
 
   // Auto-load TCP playback module on robot via SSH
   setup_robot_audio_tcp(robot_ip);
+  if (g_stop.load()) {
+    printf("\n已取消\n");
+    return 0;
+  }
 
   // Load raw file data (local)
   std::vector<uint8_t> raw;

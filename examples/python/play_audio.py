@@ -17,7 +17,7 @@
   python3 play_audio.py <机器人IP> <音频文件>
 
 示例：
-  python3 play_audio.py 172.31.8.168 mic_mono.wav
+  python3 play_audio.py <机器人IP> mic_mono.wav
 """
 
 import socket
@@ -37,22 +37,42 @@ PORT = 6001
 
 
 def setup_robot_audio_tcp(robot_ip):
-    """Auto-load PulseAudio TCP playback module on robot via SSH."""
+    """Auto-load PulseAudio TCP playback module on robot via SSH.
+
+    先检查模块是否已加载，已加载则跳过。
+    SSH 输出直接显示在终端，以便用户看到密码提示并完成认证。
+    """
+    # 一条 SSH 命令：先检查，未加载才加载，避免重复输入密码
     cmd = (
-        'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '
-        '"pactl load-module module-simple-protocol-tcp '
+        'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s \''
+        'if pactl list modules short 2>/dev/null | grep -q module-simple-protocol-tcp; then '
+        'echo MODULE_ALREADY_LOADED; '
+        'else '
+        'pactl load-module module-simple-protocol-tcp '
         'sink=@DEFAULT_SINK@ playback=true port=%d '
-        'format=s16le rate=%d channels=%d listen=0.0.0.0"'
+        'format=s16le rate=%d channels=%d listen=0.0.0.0 && '
+        'echo MODULE_LOADED; '
+        'fi\''
         % (robot_ip, PORT, RATE, CHANNELS)
     )
     try:
-        subprocess.run(cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=10)
-        print("已在机器人端加载播放模块 (端口 %d)" % PORT)
+        result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, text=True)
+        output = result.stdout.strip()
+        if "MODULE_ALREADY_LOADED" in output:
+            print("播放模块已在机器人端加载（跳过加载）")
+        elif "MODULE_LOADED" in output:
+            print("已在机器人端加载播放模块 (端口 %d)" % PORT)
+        else:
+            print("警告: 播放模块加载可能未成功（stderr 已输出到终端）")
     except KeyboardInterrupt:
         print("\n已取消")
         sys.exit(0)
-    except Exception:
-        pass  # Module may already be loaded
+    except subprocess.TimeoutExpired:
+        print("SSH 连接超时，请检查网络连接或机器人 IP")
+        sys.exit(1)
+    except Exception as e:
+        print("SSH 连接失败: %s" % e)
+        sys.exit(1)
 
 
 def is_wav_data(data):
@@ -216,16 +236,19 @@ def main():
             break
 
         total += len(chunk)
-        print("\r已播放 %.1f / %.1f 秒" % (
-            total / bytes_per_sec, len(pcm_data) / bytes_per_sec), end="", flush=True)
+        played = total / bytes_per_sec
+        total_sec = len(pcm_data) / bytes_per_sec
+        # 用固定宽度避免 \r 覆盖残留字符
+        print("\r已播放 %.1f / %.1f 秒   " % (played, total_sec), end="", flush=True)
 
-        # Precise timing: compensate for network and processing delay
+        # Precise timing: sleep in small steps so Ctrl+C responds quickly
         next_send_time += chunk_duration
-        sleep_time = next_send_time - time.monotonic()
-        if sleep_time > 0:
-            time.sleep(sleep_time)
+        while not stop and time.monotonic() < next_send_time:
+            remaining = next_send_time - time.monotonic()
+            if remaining > 0.01:
+                time.sleep(0.01)
 
-    print("\n播放结束")
+    print("\n播放结束              ")
     sock.close()
 
 
