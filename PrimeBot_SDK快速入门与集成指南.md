@@ -990,6 +990,21 @@ aimdk_msgs/config/fastdds_profiles.xml
 
 对应的 Ubuntu/Linux 内核 UDP 缓冲区上限也应设置为 20M+，并满足上方 `>=` 关系。以下示例统一使用 24M，即 `25165824`。
 
+**绑定通信网卡 IP（可选）**
+
+默认不绑定 IP，即 `aimdk_msgs/config/fastdds_profiles.xml` 的 `interfaceWhiteList` 保持注释状态，FastDDS 会使用系统可用的网络接口。当设备和机器人之间存在多个同时连通的网络（如 Wi-Fi/热点/以太网），且出现通信丢帧、RPC 超时等问题时，建议将 FastDDS 绑定到用于与机器人通信的网卡**本机 IP**，避免 DDS 流量经由其他网络接口收发，优化通信链路。
+
+在 `aimdk_msgs/config/fastdds_profiles.xml` 的 `aimdk_udp_transport` 中，取消 `interfaceWhiteList` 的注释，并将 `x.x.x.x` 替换为运行 SDK 设备上、连接机器人网络的本机 IP。例如：开发pc通过以太网链接机器人时，本机通信网卡 IP 为 `10.1.1.99`：
+
+```xml
+<interfaceWhiteList>
+  <address>127.0.0.1</address>
+  <address>10.1.1.99</address>
+</interfaceWhiteList>
+```
+
+可使用 `ip addr` 查看本机网卡 IP。请勿填写机器人的 IP；该配置用于选择本机 FastDDS 使用的网络接口。修改后重新执行 `colcon build`，并重新 `source <sdk-install>/setup.bash` 使配置生效。多网卡或网络拓扑发生变化时，请同步更新或取消该配置。更多 transport 配置说明请参考 [FastDDS 官方文档](https://fast-dds.docs.eprosima.com/en/latest/fastdds/transport/transport.html)。
+
 **修改内核参数：临时生效**
 
 临时方式适合快速验证，系统重启后失效，重启后使用 SDK 前需要重新执行：
