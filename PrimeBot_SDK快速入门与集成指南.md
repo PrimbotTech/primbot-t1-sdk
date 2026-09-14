@@ -1053,20 +1053,22 @@ SDK 配置中已提供 `aimdk_shm_transport` 描述符，但默认 participant �
 
 SSH 登录机器人对应板卡（运控板或大脑板），将日志目录打包：
 
+> **注意**：打包文件请输出到 `/robot/persist/log/` 目录，不要放到 `/tmp`。`/tmp` 空间较小，不适合存放较大的日志包；`/robot/persist/log/` 目录会有定期清理机制，无需担心磁盘占满。
+
 ```bash
-# 打包系统日志
-tar -czf /tmp/robot_logs_$(date +%Y%m%d_%H%M%S).tar.gz /robot/persist/log/
+# 打包系统日志（输出到 /robot/persist/log/）
+tar -czf /robot/persist/log/robot_logs_$(date +%Y%m%d_%H%M%S).tar.gz /robot/persist/log/
 
 # 打包 ROS2 Bag 数据包（如有）
-tar -czf /tmp/robot_bags_$(date +%Y%m%d_%H%M%S).tar.gz /robot/persist/bag/
+tar -czf /robot/persist/log/robot_bags_$(date +%Y%m%d_%H%M%S).tar.gz /robot/persist/bag/
 ```
 
 打包完成后，通过 `scp` 将日志文件传输到开发 PC：
 
 ```bash
 # 在开发 PC 上执行
-scp run@<板卡IP>:/tmp/robot_logs_*.tar.gz ./
-scp run@<板卡IP>:/tmp/robot_bags_*.tar.gz ./
+scp run@<板卡IP>:/robot/persist/log/robot_logs_*.tar.gz ./
+scp run@<板卡IP>:/robot/persist/log/robot_bags_*.tar.gz ./
 ```
 
 **3. 查看模块运行状态**

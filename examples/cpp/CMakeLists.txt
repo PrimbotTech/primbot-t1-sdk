@@ -14,8 +14,8 @@ set(EXAMPLE_TARGETS
   get_video_stream
   joint_control
   mc_locomotion_velocity
-  play_audio
-  play_audio_file
+  play_audio_from_pc
+  play_audio_from_robot
   play_emotion
   play_lights
   record_audio
