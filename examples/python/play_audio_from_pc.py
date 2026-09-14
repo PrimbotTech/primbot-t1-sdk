@@ -14,10 +14,10 @@
   示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）。
 
 用法：
-  python3 play_audio.py <机器人IP> <音频文件>
+  python3 examples/python/play_audio_from_pc.py <机器人IP> <音频文件>
 
 示例：
-  python3 play_audio.py <机器人IP> mic_mono.wav
+  python3 examples/python/play_audio_from_pc.py <机器人IP> mic_mono.wav
 """
 
 import socket

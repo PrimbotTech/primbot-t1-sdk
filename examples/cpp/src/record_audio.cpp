@@ -23,17 +23,17 @@
    - 本机已安装 parec：sudo apt install pulseaudio-utils
 
  @usage
-   ./record_audio <机器人IP> [录音秒数]
+   ./examples/cpp/record_audio <机器人IP> [录音秒数]
 
    机器人IP 为 127.0.0.1 或 localhost 时自动使用本机模式（共享内存），
    否则使用远程模式（TCP）。
 
  @example
    # 本机录音（共享内存）
-   ./record_audio 127.0.0.1 5
+   ./examples/cpp/record_audio 127.0.0.1 5
 
    # 远程录音（TCP，网线连接时 IP 为 10.1.1.100）
-   ./record_audio 10.1.1.100 5
+   ./examples/cpp/record_audio 10.1.1.100 5
  */
 
 #include <algorithm>

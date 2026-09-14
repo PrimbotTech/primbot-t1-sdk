@@ -14,14 +14,18 @@ Prerequisites:
   - Audio output device must be working properly
 
 Usage:
-  python3 play_audio.py --ros-args -p file_name:=<filename> -p file_path:=<directory>
+  python3 play_audio_from_robot.py --ros-args -p file_name:=<filename> -p file_path:=<directory> -p media_role:=<role>
 
 Example:
-  python3 play_audio.py --ros-args -p file_name:=小星星.wav -p file_path:=/robot/software/aimrt_agent/bin/cfg/q1/audio
+  python3 play_audio_from_robot.py --ros-args -p file_name:=小星星.wav -p file_path:=/robot/software/aimrt_agent/bin/cfg/t1/audio -p media_role:=Music
 
 Parameters:
   - file_name: Audio file name to play (default: 小星星.wav)
-  - file_path: Directory containing the audio file (default: /robot/software/aimrt_agent/bin/cfg/q1/audio)
+  - file_path: Directory containing the audio file (default: /robot/software/aimrt_agent/bin/cfg/t1/audio)
+  - media_role: PulseAudio media.role (default: Music)
+    Alert(系统告警,优先级100) | Notification(系统提示音,优先级80)
+    Communication(对话语音,优先级60) | Music(音乐/媒体,优先级40)
+    非 Music 角色播放时会自动降低(duck)音乐音量
 """
 
 import rclpy
@@ -35,9 +39,10 @@ from aimdk_msgs.srv import PlayAudioFile
 
 class PlayAudioFileClient(Node):
     def __init__(self):
-        super().__init__("play_audio_file_client")
+        super().__init__("play_audio_from_robot_client")
         self.file_name = self.declare_parameter("file_name", "小星星.wav").value
-        self.file_path = self.declare_parameter("file_path", "/robot/software/aimrt_agent/bin/cfg/q1/audio").value
+        self.file_path = self.declare_parameter("file_path", "/robot/software/aimrt_agent/bin/cfg/t1/audio").value
+        self.media_role = self.declare_parameter("media_role", "Music").value
 
         self.service_name = "/aimdk_5Fmsgs/srv/PlayAudioFile"
         self.pkg_name = "sdk_demo"
@@ -85,6 +90,7 @@ class PlayAudioFileClient(Node):
             request.file.info.coding_format = self.coding_format
             request.file.priority = self.priority
             request.file.priority_weight = self.priority_weight
+            request.file.media_role = self.media_role
 
             self.get_logger().info(
                 "Sending PlayAudioFile request: "

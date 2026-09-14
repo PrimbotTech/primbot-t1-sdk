@@ -1,9 +1,9 @@
 /*
- @file play_audio.cpp
- @brief 音频播放示例
+ @file play_audio_from_pc.cpp
+ @brief 音频播放示例（PC 端推送）
 
  @description
-   通过 PulseAudio TCP 协议（simple-protocol-tcp）将音频文件发送到机器人扬声器播放。
+   通过 PulseAudio TCP 协议（simple-protocol-tcp）将 PC 本地音频文件发送到机器人扬声器播放。
 
    支持格式：
      - WAV 文件：自动检测 RIFF 头，转换为 48kHz mono S16LE
@@ -16,10 +16,10 @@
    先检查模块是否已加载，已加载则跳过。
 
  @usage
-   ./play_audio <机器人IP> <音频文件>
+   ./examples/cpp/play_audio_from_pc <机器人IP> <音频文件>
 
  @example
-   ./play_audio <机器人IP> mic_mono.wav
+   ./examples/cpp/play_audio_from_pc <机器人IP> mic_mono.wav
  */
 
 #include <algorithm>
@@ -415,6 +415,7 @@ int main(int argc, char *argv[]) {
   if (argc < 3) {
     printf("用法: %s <机器人IP> <音频文件>\n", argv[0]);
     printf("支持格式: .pcm (48kHz mono S16LE), .wav (自动转换)\n");
+    printf("PC 本地音频文件通过 TCP 推送到机器人扬声器播放\n");
     return 1;
   }
 

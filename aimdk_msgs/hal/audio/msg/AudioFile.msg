@@ -15,3 +15,8 @@ uint32 priority
 
 # 可选项，(1~100) priority + priority_weight% is final priority
 uint32 priority_weight
+
+# 可选项，PulseAudio media.role，不传默认 Music
+# 可选值：Alert(系统告警,优先级100) | Notification(系统提示音,优先级80) | Communication(对话语音,优先级60) | Music(音乐/媒体,优先级40,默认)
+# 非 Music 角色播放时会自动降低(duck)音乐音量
+string media_role
