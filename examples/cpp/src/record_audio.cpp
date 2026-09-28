@@ -1,39 +1,49 @@
 /*
  @file record_audio.cpp
- @brief 录音示例
+ @brief 录音示例（自动检测内置麦/外置麦）
 
  @description
    支持本机（共享内存）和远程（TCP）两种录音模式。
+   自动检测当前 PulseAudio 默认录音源，适配不同麦克风：
 
-   本机模式：在机器人上直接运行，通过 PulseAudio unix socket（共享内存）传输音频，效率更高。
-   远程模式：在 PC 端运行，通过 PulseAudio TCP 协议从机器人麦克风阵列录音。
+   内置麦（麦克风阵列 aw89403）：
+     - 8声道 48kHz S16LE
+     - ch1-2：回采, ch3-8：麦克
+     - 输出：raw_8ch.wav + mic_mono.wav（ch5-6 混合, 10倍放大）
 
-   录音格式：8声道 48kHz S16LE（机器人麦克风原始格式）
-   声道说明：
-     - ch1-2：回采
-     - ch3-8：麦克
-
-   输出文件：
-     - raw_8ch.wav：完整 8 声道原始录音
-     - mic_mono.wav：ch5-6 混合的单声道录音（10 倍放大）
+   外置麦（USB 麦克风）：
+     - 2声道 48kHz S24LE（24-bit）
+     - ch1-2：左右声道
+     - 输出：raw_2ch.wav + mic_mono.wav（ch1-2 混合, 24→16bit）
 
  @prerequisites
    - 远程模式：示例脚本会通过 SSH 自动在机器人端加载 TCP 录音模块（端口 4713）
    - 本机模式：无需额外配置，直接使用 PulseAudio 本地 socket
    - 本机已安装 parec：sudo apt install pulseaudio-utils
+   - 使用 SSH 密钥时：将售后提供的密钥目录（<机器人SN>_soc0/）放到 SDK 根目录下
+     （与 examples/ 同级），并修改权限：
+     sudo chown -R $USER:$USER ./<机器人SN>_soc0/
+     chmod 600 ./<机器人SN>_soc0/id_ed25519
+     然后在 SDK 根目录下执行示例命令，使用 -i ./<机器人SN>_soc0/id_ed25519 指定密钥。
 
  @usage
-   ./examples/cpp/record_audio <机器人IP> [录音秒数]
+   ./build/aimdk_examples_cpp/record_audio [-i SSH_KEY] <机器人IP> [录音秒数]
 
    机器人IP 为 127.0.0.1 或 localhost 时自动使用本机模式（共享内存），
    否则使用远程模式（TCP）。
 
+   可选参数：
+     -i SSH_KEY    SSH 私钥文件路径（机器人需要密钥登录）
+
  @example
    # 本机录音（共享内存）
-   ./examples/cpp/record_audio 127.0.0.1 5
+   ./build/aimdk_examples_cpp/record_audio 127.0.0.1 5
 
-   # 远程录音（TCP，网线连接时 IP 为 10.1.1.100）
-   ./examples/cpp/record_audio 10.1.1.100 5
+   # 远程录音（TCP）
+   ./build/aimdk_examples_cpp/record_audio <机器人IP> 5
+
+   # 远程录音（使用 SSH 密钥，网线连接时 IP 为 10.1.1.100）
+   ./build/aimdk_examples_cpp/record_audio -i ./<机器人SN>_soc0/id_ed25519 10.1.1.100 5
  */
 
 #include <algorithm>
@@ -57,12 +67,19 @@
 namespace {
 
 constexpr int kRate = 48000;
-constexpr int kChannels = 8;
-constexpr int kSampleWidth = 2;  // 16-bit = 2 bytes
-constexpr int kBytesPerFrame = kChannels * kSampleWidth;
-constexpr const char *kDevice = "alsa_input.platform-aw89403_sound.pro-input-0";
+constexpr const char *kBuiltinDevice = "alsa_input.platform-aw89403_sound.pro-input-0";
 
 std::atomic<bool> g_stop{false};
+
+// ---- Microphone profile (built-in array or USB mic) ----
+struct MicProfile {
+  std::string device_name;
+  int channels         = 8;
+  int sample_width     = 2;     // bytes per sample (2 = 16-bit, 3 = 24-bit)
+  int bits_per_sample  = 16;
+  std::string format   = "s16le";
+  bool is_builtin      = true;
+};
 
 }  // namespace
 
@@ -97,43 +114,163 @@ static std::string get_local_pulse_server() {
 }
 
 // ---------------------------------------------------------------------------
-// Auto-setup: load PulseAudio TCP modules on robot via SSH
+// Microphone profile detection
 // ---------------------------------------------------------------------------
 
-static void setup_robot_audio_tcp(const char *robot_ip) {
-  // 先检查模块是否已加载，已加载则跳过，避免重复输入密码
-  char cmd[1024];
-  snprintf(cmd, sizeof(cmd),
-           "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '"
-           "if pactl list modules short 2>/dev/null | grep -q module-native-protocol-tcp; then "
-           "echo MODULE_ALREADY_LOADED; "
-           "else "
-           "pactl load-module module-native-protocol-tcp "
-           "auth-anonymous=1 listen=0.0.0.0 && "
-           "echo MODULE_LOADED; "
-           "fi'",
-           robot_ip);
+static std::string get_default_source(bool local_mode, const char *robot_ip, const char *ssh_key = nullptr) {
+  std::string cmd;
+  if (local_mode) {
+    cmd = "pactl get-default-source 2>/dev/null";
+  } else {
+    char buf[512];
+    if (ssh_key) {
+      snprintf(buf, sizeof(buf),
+               "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i %s run@%s '"
+               "PULSE_SERVER=unix:/run/user/1000/pulse/native "
+               "pactl get-default-source 2>/dev/null'",
+               ssh_key, robot_ip);
+    } else {
+      snprintf(buf, sizeof(buf),
+               "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '"
+               "PULSE_SERVER=unix:/run/user/1000/pulse/native "
+               "pactl get-default-source 2>/dev/null'",
+               robot_ip);
+    }
+    cmd = buf;
+  }
+
+  FILE *fp = popen(cmd.c_str(), "r");
+  if (!fp) return "";
+
+  std::string result;
+  char buf[512];
+  while (fgets(buf, sizeof(buf), fp)) result += buf;
+  pclose(fp);
+
+  // Trim trailing whitespace
+  while (!result.empty() &&
+         (result.back() == '\n' || result.back() == '\r' || result.back() == ' '))
+    result.pop_back();
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Auto-setup: load PulseAudio TCP modules on robot via SSH
+//             同时检测默认录音源，合并为一次 SSH 调用避免重复输入密码
+// ---------------------------------------------------------------------------
+
+// 返回值: 默认录音源名称（空字符串表示检测失败）
+// 副作用: 通过 SSH 检查/加载 TCP 录音模块，打印状态信息
+static std::string setup_and_detect_source(const char *robot_ip, const char *ssh_key = nullptr) {
+  // 将 TCP 模块加载检查和默认录音源查询合并到一次 SSH 会话中
+  char cmd[2048];
+  if (ssh_key) {
+    snprintf(cmd, sizeof(cmd),
+             "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i %s run@%s '"
+             "export PULSE_SERVER=unix:/run/user/1000/pulse/native; "
+             "if pactl list modules short 2>/dev/null | grep -q module-native-protocol-tcp; then "
+             "echo __TCP_MODULE__:ALREADY_LOADED; "
+             "else "
+             "pactl load-module module-native-protocol-tcp "
+             "auth-anonymous=1 listen=0.0.0.0 >/dev/null 2>&1 && "
+             "echo __TCP_MODULE__:LOADED; "
+             "fi; "
+             "echo __DEFAULT_SOURCE__; "
+             "pactl get-default-source 2>/dev/null"
+             "'",
+             ssh_key, robot_ip);
+  } else {
+    snprintf(cmd, sizeof(cmd),
+             "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '"
+             "export PULSE_SERVER=unix:/run/user/1000/pulse/native; "
+             "if pactl list modules short 2>/dev/null | grep -q module-native-protocol-tcp; then "
+             "echo __TCP_MODULE__:ALREADY_LOADED; "
+             "else "
+             "pactl load-module module-native-protocol-tcp "
+             "auth-anonymous=1 listen=0.0.0.0 >/dev/null 2>&1 && "
+             "echo __TCP_MODULE__:LOADED; "
+             "fi; "
+             "echo __DEFAULT_SOURCE__; "
+             "pactl get-default-source 2>/dev/null"
+             "'",
+             robot_ip);
+  }
 
   FILE *fp = popen(cmd, "r");
   if (!fp) {
     printf("SSH 连接失败\n");
-    return;
+    return "";
   }
   std::string output;
-  char buf[256];
+  char buf[512];
   while (fgets(buf, sizeof(buf), fp)) {
     output += buf;
   }
   int ret = pclose(fp);
   (void)ret;
 
-  if (output.find("MODULE_ALREADY_LOADED") != std::string::npos) {
+  // 解析 TCP 模块加载状态
+  if (output.find("__TCP_MODULE__:ALREADY_LOADED") != std::string::npos) {
     printf("录音模块已在机器人端加载（跳过加载）\n");
-  } else if (output.find("MODULE_LOADED") != std::string::npos) {
+  } else if (output.find("__TCP_MODULE__:LOADED") != std::string::npos) {
     printf("已在机器人端加载录音模块 (端口 4713)\n");
   } else {
     printf("警告: 录音模块加载可能未成功（stderr 已输出到终端）\n");
   }
+
+  // 解析默认录音源名称（__DEFAULT_SOURCE__ 标记之后的第一行非空内容）
+  std::string source;
+  auto pos = output.find("__DEFAULT_SOURCE__");
+  if (pos != std::string::npos) {
+    pos = output.find('\n', pos);
+    if (pos != std::string::npos) {
+      pos++;  // skip '\n'
+      auto end = output.find('\n', pos);
+      if (end == std::string::npos) end = output.size();
+      source = output.substr(pos, end - pos);
+      // Trim trailing whitespace
+      while (!source.empty() &&
+             (source.back() == '\n' || source.back() == '\r' || source.back() == ' '))
+        source.pop_back();
+    }
+  }
+  return source;
+}
+
+// ---------------------------------------------------------------------------
+// Parse source name into MicProfile (shared by local and remote paths)
+// ---------------------------------------------------------------------------
+
+static MicProfile parse_mic_profile(const std::string &source) {
+  MicProfile profile;
+  if (source.empty()) {
+    printf("无法检测默认录音源，使用内置麦默认配置\n");
+    profile.device_name = kBuiltinDevice;
+    return profile;
+  }
+
+  profile.device_name = source;
+
+  if (source.find("aw89403") != std::string::npos) {
+    profile = {source, 8, 2, 16, "s16le", true};
+    printf("检测到内置麦（aw89403）: %s\n", source.c_str());
+  } else {
+    profile = {source, 2, 3, 24, "s24le", false};
+    printf("检测到外置麦（USB）: %s\n", source.c_str());
+  }
+
+  printf("  格式: %s, %dch, %dHz, %d-bit\n",
+         profile.format.c_str(), profile.channels, kRate, profile.bits_per_sample);
+  return profile;
+}
+
+// ---------------------------------------------------------------------------
+// Microphone profile detection (local-only path)
+// ---------------------------------------------------------------------------
+
+static MicProfile detect_mic_profile(bool local_mode, const char *robot_ip, const char *ssh_key = nullptr) {
+  std::string source = get_default_source(local_mode, robot_ip, ssh_key);
+  return parse_mic_profile(source);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,13 +296,14 @@ static void write_u32_le(FILE *f, uint32_t v) {
 }
 
 static bool write_wav(const char *path, const std::vector<uint8_t> &data,
-                      int channels, int rate) {
+                      int channels, int rate, int bits_per_sample) {
   FILE *f = fopen(path, "wb");
   if (!f) {
     perror(path);
     return false;
   }
 
+  int bytes_per_sample = bits_per_sample / 8;
   uint32_t data_size = static_cast<uint32_t>(data.size());
   uint32_t riff_size = 36 + data_size;
 
@@ -179,9 +317,9 @@ static bool write_wav(const char *path, const std::vector<uint8_t> &data,
   write_u16_le(f, 1);                               // PCM format
   write_u16_le(f, static_cast<uint16_t>(channels));  // channels
   write_u32_le(f, static_cast<uint32_t>(rate));      // sample rate
-  write_u32_le(f, static_cast<uint32_t>(rate * channels * kSampleWidth));  // byte rate
-  write_u16_le(f, static_cast<uint16_t>(channels * kSampleWidth));         // block align
-  write_u16_le(f, 16);                              // bits per sample
+  write_u32_le(f, static_cast<uint32_t>(rate * channels * bytes_per_sample));  // byte rate
+  write_u16_le(f, static_cast<uint16_t>(channels * bytes_per_sample));         // block align
+  write_u16_le(f, static_cast<uint16_t>(bits_per_sample));                     // bits per sample
 
   // data chunk
   fwrite("data", 1, 4, f);
@@ -215,29 +353,68 @@ static inline int16_t clamp_s16(int32_t v) {
 }
 
 // ---------------------------------------------------------------------------
+// S24LE (24-bit signed little-endian) sample helpers
+// ---------------------------------------------------------------------------
+
+static inline int32_t read_s24_le(const uint8_t *p) {
+  uint32_t val = static_cast<uint32_t>(p[0]) |
+                 (static_cast<uint32_t>(p[1]) << 8) |
+                 (static_cast<uint32_t>(p[2]) << 16);
+  // Sign-extend from 24 bits to 32 bits
+  if (val & 0x800000) {
+    val |= 0xFF000000;
+  }
+  return static_cast<int32_t>(val);
+}
+
+static inline int16_t s24_to_s16(const uint8_t *p) {
+  int32_t s24 = read_s24_le(p);
+  int32_t s16 = s24 >> 8;  // arithmetic right shift preserves sign
+  if (s16 > 32767) s16 = 32767;
+  if (s16 < -32768) s16 = -32768;
+  return static_cast<int16_t>(s16);
+}
+
+// ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
 
 int main(int argc, char *argv[]) {
   if (argc < 2) {
-    printf("用法: %s <机器人IP> [录音秒数]\n", argv[0]);
+    printf("用法: %s [-i SSH_KEY] <机器人IP> [录音秒数]\n", argv[0]);
     printf("\n");
     printf("  机器人IP 为 127.0.0.1 或 localhost 时自动使用本机模式（共享内存）\n");
     printf("  否则使用远程模式（TCP）\n");
+    printf("\n");
+    printf("  可选参数：\n");
+    printf("    -i SSH_KEY    SSH 私钥文件路径（机器人需要密钥登录）\n");
     return 1;
+  }
+
+  // 解析可选参数 -i SSH_KEY
+  const char *ssh_key = nullptr;
+  int arg_idx = 1;
+  if (argc >= 3 && strcmp(argv[1], "-i") == 0) {
+    if (argc < 4) {
+      printf("错误: -i 参数需要指定 SSH 私钥文件路径\n");
+      return 1;
+    }
+    ssh_key = argv[2];
+    arg_idx = 3;
   }
 
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
-  const char *robot_ip = argv[1];
-  int duration = (argc > 2) ? atoi(argv[2]) : 5;
+  const char *robot_ip = argv[arg_idx];
+  int duration = (argc > arg_idx + 1) ? atoi(argv[arg_idx + 1]) : 5;
   if (duration <= 0) duration = 5;
 
   // 检测本机/远程模式
   bool local_mode = is_local_robot(robot_ip);
 
   std::string pulse_server_value;
+  MicProfile profile;
   if (local_mode) {
     pulse_server_value = get_local_pulse_server();
     if (!pulse_server_value.empty()) {
@@ -246,22 +423,32 @@ int main(int argc, char *argv[]) {
       pulse_server_value = "";  // 使用 PulseAudio 默认 socket
       printf("本机模式（默认 socket），录音 %d 秒...\n", duration);
     }
+    profile = detect_mic_profile(local_mode, robot_ip, ssh_key);
   } else {
     printf("检测到远程环境，使用 TCP 传输\n");
-    // 远程模式需要通过 SSH 加载 TCP 录音模块
-    setup_robot_audio_tcp(robot_ip);
+    if (ssh_key) {
+      printf("使用 SSH 密钥: %s\n", ssh_key);
+    }
+    // 远程模式：通过一次 SSH 同时完成 TCP 模块加载 + 录音源检测（避免重复输入密码）
+    std::string remote_source = setup_and_detect_source(robot_ip, ssh_key);
     if (g_stop.load()) {
       printf("\n已取消\n");
       return 0;
     }
     pulse_server_value = "tcp:" + std::string(robot_ip) + ":4713";
     printf("远程模式（TCP: %s:4713），录音 %d 秒...\n", robot_ip, duration);
+    profile = parse_mic_profile(remote_source);
   }
 
+  int channels = profile.channels;
+  int sample_width = profile.sample_width;
+  int bytes_per_frame = channels * sample_width;
+  int bits_per_sample = profile.bits_per_sample;
+
   // ---- Build parec argv ----
-  std::string s_channels = std::to_string(kChannels);
+  std::string s_channels = std::to_string(channels);
   std::string s_rate = std::to_string(kRate);
-  std::string s_device = std::string(kDevice);
+  std::string s_device = profile.device_name;
 
   // ---- Fork/exec parec so we can kill it cleanly ----
   int pipefd[2];
@@ -295,7 +482,7 @@ int main(int argc, char *argv[]) {
     ::execlp("parec", "parec",
              "--channels", s_channels.c_str(),
              "--rate", s_rate.c_str(),
-             "--format", "s16le",
+             "--format", profile.format.c_str(),
              "--device", s_device.c_str(),
              nullptr);
     perror("execlp parec");
@@ -306,7 +493,7 @@ int main(int argc, char *argv[]) {
   ::close(pipefd[1]);
 
   // ---- Read PCM data with threaded progress display ----
-  int bytes_per_sec = kRate * kBytesPerFrame;
+  int bytes_per_sec = kRate * bytes_per_frame;
   size_t total_bytes = static_cast<size_t>(bytes_per_sec) * duration;
   std::vector<uint8_t> audio;
   audio.reserve(total_bytes);
@@ -351,7 +538,7 @@ int main(int argc, char *argv[]) {
 
   ::close(pipefd[0]);
 
-  size_t n_frames = audio.size() / kBytesPerFrame;
+  size_t n_frames = audio.size() / bytes_per_frame;
   double actual_secs = static_cast<double>(n_frames) / kRate;
 
   printf("录音 %zu 字节 (%.1f 秒)\n", audio.size(), actual_secs);
@@ -364,46 +551,71 @@ int main(int argc, char *argv[]) {
     return 1;
   }
 
-  // ---- Save 8-channel WAV ----
-  write_wav("raw_8ch.wav", audio, kChannels, kRate);
+  // ---- Save raw WAV (8ch or 2ch depending on mic type) ----
+  const char *raw_filename = profile.is_builtin ? "raw_8ch.wav" : "raw_2ch.wav";
+  write_wav(raw_filename, audio, channels, kRate, bits_per_sample);
 
   // ---- Per-channel analysis + mono extraction ----
   printf("分析中...\n");
 
-  std::vector<int64_t> ch_sum(kChannels, 0);
-  std::vector<int16_t> ch_peak(kChannels, 0);
+  std::vector<int64_t> ch_sum(channels, 0);
+  std::vector<int16_t> ch_peak(channels, 0);
   std::vector<uint8_t> mono;
-  mono.reserve(n_frames * kSampleWidth);
+  mono.reserve(n_frames * 2);  // mono is always 16-bit
 
   for (size_t i = 0; i < n_frames; ++i) {
-    const uint8_t *frame = audio.data() + i * kBytesPerFrame;
-    int16_t samples[kChannels];
-    for (int c = 0; c < kChannels; ++c) {
-      samples[c] = read_s16_le(frame + c * kSampleWidth);
-      int16_t abs_val = static_cast<int16_t>(std::abs(samples[c]));
-      ch_sum[c] += abs_val;
-      if (abs_val > ch_peak[c]) ch_peak[c] = abs_val;
+    const uint8_t *frame = audio.data() + i * bytes_per_frame;
+
+    if (profile.is_builtin) {
+      // Built-in mic: 8ch S16LE, use ch5-6 (index 4,5) mixed with 10x gain
+      int16_t samples[8];
+      for (int c = 0; c < channels; ++c) {
+        samples[c] = read_s16_le(frame + c * sample_width);
+        int16_t abs_val = static_cast<int16_t>(std::abs(samples[c]));
+        ch_sum[c] += abs_val;
+        if (abs_val > ch_peak[c]) ch_peak[c] = abs_val;
+      }
+      int32_t mixed = (static_cast<int32_t>(samples[4]) + samples[5]) / 2 * 10;
+      int16_t mono_sample = clamp_s16(mixed);
+      uint8_t sample_buf[2];
+      write_s16_le(sample_buf, mono_sample);
+      mono.insert(mono.end(), sample_buf, sample_buf + 2);
+    } else {
+      // External USB mic: 2ch S24LE, mix ch1-2 and convert 24→16 bit
+      int32_t samples[2];
+      for (int c = 0; c < channels; ++c) {
+        const uint8_t *sp = frame + c * sample_width;
+        samples[c] = read_s24_le(sp);
+        // Convert to 16-bit for stats
+        int16_t s16 = s24_to_s16(sp);
+        int16_t abs_val = static_cast<int16_t>(std::abs(s16));
+        ch_sum[c] += abs_val;
+        if (abs_val > ch_peak[c]) ch_peak[c] = abs_val;
+      }
+      // Average ch1-2, convert to 16-bit
+      int32_t mixed = (samples[0] + samples[1]) / 2;
+      int32_t s16 = mixed >> 8;
+      if (s16 > 32767) s16 = 32767;
+      if (s16 < -32768) s16 = -32768;
+      int16_t mono_sample = static_cast<int16_t>(s16);
+      uint8_t sample_buf[2];
+      write_s16_le(sample_buf, mono_sample);
+      mono.insert(mono.end(), sample_buf, sample_buf + 2);
     }
-    // Mix ch5-6 (index 4,5), amplify 10x
-    int32_t mixed = (static_cast<int32_t>(samples[4]) + samples[5]) / 2 * 10;
-    int16_t mono_sample = clamp_s16(mixed);
-    uint8_t sample_buf[2];
-    write_s16_le(sample_buf, mono_sample);
-    mono.insert(mono.end(), sample_buf, sample_buf + 2);
   }
 
   // ---- Save mono WAV ----
-  write_wav("mic_mono.wav", mono, 1, kRate);
+  write_wav("mic_mono.wav", mono, 1, kRate, 16);
 
   // ---- Print per-channel stats ----
   printf("\n各通道音量:\n");
-  for (int c = 0; c < kChannels; ++c) {
+  for (int c = 0; c < channels; ++c) {
     double avg = static_cast<double>(ch_sum[c]) / n_frames;
     const char *tag = (avg > 50) ? "有声" : "静音";
     printf("  通道 %d: 平均 %6.1f  峰值 %5d  %s\n", c + 1, avg, ch_peak[c], tag);
   }
 
-  printf("\n保存: raw_8ch.wav, mic_mono.wav\n");
+  printf("\n保存: %s, mic_mono.wav\n", raw_filename);
   printf("播放: paplay mic_mono.wav\n");
   return 0;
 }

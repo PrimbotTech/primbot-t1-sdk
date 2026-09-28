@@ -12,14 +12,23 @@
      - 非 48kHz 采样率自动重采样
 
  @prerequisites
-   示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）。
-   先检查模块是否已加载，已加载则跳过。
+   - 示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）
+   - 使用 SSH 密钥时：将售后提供的密钥目录（<机器人SN>_soc0/）放到 SDK 根目录下
+     （与 examples/ 同级），并修改权限：
+     sudo chown -R $USER:$USER ./<机器人SN>_soc0/
+     chmod 600 ./<机器人SN>_soc0/id_ed25519
+     然后在 SDK 根目录下执行示例命令，使用 -i ./<机器人SN>_soc0/id_ed25519 指定密钥。
 
  @usage
-   ./examples/cpp/play_audio_from_pc <机器人IP> <音频文件>
+   ./examples/cpp/play_audio_from_pc [-i SSH_KEY] <机器人IP> <音频文件>
+
+   可选参数：
+     -i SSH_KEY    SSH 私钥文件路径（机器人需要密钥登录）
 
  @example
    ./examples/cpp/play_audio_from_pc <机器人IP> mic_mono.wav
+   // 使用 SSH 密钥（网线连接时 IP 为 10.1.1.100）
+   ./examples/cpp/play_audio_from_pc -i ./<机器人SN>_soc0/id_ed25519 10.1.1.100 mic_mono.wav
  */
 
 #include <algorithm>
@@ -57,20 +66,34 @@ static void signal_handler(int) { g_stop.store(true); }
 // Auto-setup: load PulseAudio TCP modules on robot via SSH
 // ---------------------------------------------------------------------------
 
-static void setup_robot_audio_tcp(const char *robot_ip) {
+static void setup_robot_audio_tcp(const char *robot_ip, const char *ssh_key = nullptr) {
   // 先检查模块是否已加载，已加载则跳过，避免重复输入密码
   char cmd[1024];
-  snprintf(cmd, sizeof(cmd),
-           "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '"
-           "if pactl list modules short 2>/dev/null | grep -q module-simple-protocol-tcp; then "
-           "echo MODULE_ALREADY_LOADED; "
-           "else "
-           "pactl load-module module-simple-protocol-tcp "
-           "sink=@DEFAULT_SINK@ playback=true port=%d "
-           "format=s16le rate=%d channels=%d listen=0.0.0.0 && "
-           "echo MODULE_LOADED; "
-           "fi'",
-           robot_ip, kPort, kRate, kChannels);
+  if (ssh_key) {
+    snprintf(cmd, sizeof(cmd),
+             "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 -i %s run@%s '"
+             "if pactl list modules short 2>/dev/null | grep -q module-simple-protocol-tcp; then "
+             "echo MODULE_ALREADY_LOADED; "
+             "else "
+             "pactl load-module module-simple-protocol-tcp "
+             "sink=@DEFAULT_SINK@ playback=true port=%d "
+             "format=s16le rate=%d channels=%d listen=0.0.0.0 && "
+             "echo MODULE_LOADED; "
+             "fi'",
+             ssh_key, robot_ip, kPort, kRate, kChannels);
+  } else {
+    snprintf(cmd, sizeof(cmd),
+             "ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s '"
+             "if pactl list modules short 2>/dev/null | grep -q module-simple-protocol-tcp; then "
+             "echo MODULE_ALREADY_LOADED; "
+             "else "
+             "pactl load-module module-simple-protocol-tcp "
+             "sink=@DEFAULT_SINK@ playback=true port=%d "
+             "format=s16le rate=%d channels=%d listen=0.0.0.0 && "
+             "echo MODULE_LOADED; "
+             "fi'",
+             robot_ip, kPort, kRate, kChannels);
+  }
 
   FILE *fp = popen(cmd, "r");
   if (!fp) {
@@ -413,20 +436,37 @@ static bool play_pcm(const char *robot_ip, const std::vector<uint8_t> &pcm) {
 
 int main(int argc, char *argv[]) {
   if (argc < 3) {
-    printf("用法: %s <机器人IP> <音频文件>\n", argv[0]);
+    printf("用法: %s [-i SSH_KEY] <机器人IP> <音频文件>\n", argv[0]);
     printf("支持格式: .pcm (48kHz mono S16LE), .wav (自动转换)\n");
-    printf("PC 本地音频文件通过 TCP 推送到机器人扬声器播放\n");
+    printf("\n");
+    printf("  可选参数：\n");
+    printf("    -i SSH_KEY    SSH 私钥文件路径（机器人需要密钥登录）\n");
     return 1;
   }
 
-  const char *robot_ip = argv[1];
-  const char *audio_file = argv[2];
+  // 解析可选参数 -i SSH_KEY
+  const char *ssh_key = nullptr;
+  int arg_idx = 1;
+  if (argc >= 4 && strcmp(argv[1], "-i") == 0) {
+    if (argc < 5) {
+      printf("错误: -i 参数需要指定 SSH 私钥文件路径\n");
+      return 1;
+    }
+    ssh_key = argv[2];
+    arg_idx = 3;
+  }
+
+  const char *robot_ip = argv[arg_idx];
+  const char *audio_file = argv[arg_idx + 1];
 
   signal(SIGINT, signal_handler);
   signal(SIGTERM, signal_handler);
 
   // Auto-load TCP playback module on robot via SSH
-  setup_robot_audio_tcp(robot_ip);
+  if (ssh_key) {
+    printf("使用 SSH 密钥: %s\n", ssh_key);
+  }
+  setup_robot_audio_tcp(robot_ip, ssh_key);
   if (g_stop.load()) {
     printf("\n已取消\n");
     return 0;

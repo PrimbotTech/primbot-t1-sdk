@@ -13,14 +13,24 @@ primebot_sdk/
 ├── 接口说明.md                         # 全量 Service/Topic 接口定义与参数手册
 ├── 友好用户使用声明.md                  # 友好用户使用声明（必读）
 ├── aimdk_msgs/                        # 接口消息包 (ROS2 msg/srv 定义)
+│   ├── agent/                         # AI Agent 层
+│   │   └── msg/                       #   ASR 语音识别结果
 │   ├── config/                        # SDK 默认 FastDDS 通信配置
 │   ├── env-hooks/                     # colcon setup 自动加载的环境钩子
 │   ├── common/                        # 任务响应与基础类型定义
-│   ├── hal/                           # 硬件抽象层 (音频/相机/触摸/灯带/电池/关节)
-│   ├── interaction/                   # 交互层 (表情播放/TTS)
-│   └── mc/                            # 运控层 (动作/轨迹控制/关节)
+│   ├── hal/                           # 硬件抽象层
+│   │   ├── audio/                     #   音频采集/播放
+│   │   ├── camera/                    #   相机图像/RTSP 流
+│   │   ├── msg/                       #   BMS / 触摸 / 关节 等状态消息
+│   │   └── srv/                       #   灯带控制 等服务
+│   ├── interaction/                   # 交互层
+│   │   ├── msg/                       #   TTS 请求/响应 / 优先级
+│   │   └── srv/                       #   表情播放 / TTS 语音播报
+│   └── mc/                            # 运控层
+│       ├── action/                    #   动作定义 / 动作状态 / 动作指令
+│       └── motion/                    #   运动速度 / 预设动作 / 自定义关节指令
 └── examples/                          # 场景化例程
-    ├── cpp/                           # C++ 示例
+    ├── cpp/                           # C++ 示例（含 CMakeLists.txt / package.xml）
     ├── opencv/                        # OpenCV 4.13.0 源码包（用户本机构建）
     ├── python/                        # Python 示例
     └── ruckig_for_primebot/           # Ruckig 源码包（供 C++/Python 示例构建）

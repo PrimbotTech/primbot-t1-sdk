@@ -1,7 +1,7 @@
 /*
  @brief Example client for /aimdk_5Fmsgs/srv/PlayAudioFile (读取机器人本机磁盘音频文件播放)
  
- Default sample rate is 24kHz. Audio files must be 24kHz, 16-bit PCM, mono WAV format.
+ Default sample rate is 24kHz. Audio files must be 24kHz, 16-bit, mono WAV format.
  
  The following ROS parameters can be set via startup arguments:
  --ros-args -p <name>:=<value>

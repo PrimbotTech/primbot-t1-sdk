@@ -55,7 +55,7 @@ constexpr char kSetServoServiceName[] = "/aimdk_5Fmsgs/srv/SetServo";
 constexpr char kDefaultOutputFile[] = "/tmp/camera_capture.jpg";
 constexpr int kDefaultRequestTimeoutMs = 5000;
 constexpr int kServiceWaitSeconds = 2;
-constexpr int kMinCallTimeoutMs = 6000;
+constexpr int kMinCallTimeoutMs = 16000;
 constexpr int kMaxRetryCount = 3;
 
 std::shared_ptr<rclcpp::Node> g_node = nullptr;

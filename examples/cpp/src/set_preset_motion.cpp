@@ -231,7 +231,7 @@ int main(int argc, char *argv[]) {
 
     if (choice == "2") {
         std::cout << "\nEnter custom motion file path "
-                  << "(e.g. /robot/userdata/sd/custom_motions/my_motion.csv): ";
+                  << "(e.g. /robot/userdata/sd/custom_motions/<用户输入名称>_<时间戳>_<编号>.csv): ";
         std::string ani_path;
         std::getline(std::cin, ani_path);
         if (ani_path.empty()) {
