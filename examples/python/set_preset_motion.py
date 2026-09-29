@@ -168,7 +168,7 @@ def main(args=None):
         if choice == "2":
             file_path = input(
                 "Enter custom motion file path "
-                "(e.g. /robot/userdata/sd/custom_motions/my_motion.csv): "
+                "(e.g. /robot/userdata/sd/custom_motions/<用户自定义名称>_<时间戳>_<编号>.csv): "
             ).strip()
             if not file_path:
                 print("No path provided. Exiting.")

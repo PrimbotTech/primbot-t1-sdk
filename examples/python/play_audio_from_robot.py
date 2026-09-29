@@ -10,7 +10,7 @@ Description:
 Prerequisites:
   - Robot audio service must be running
   - Audio file must exist in the specified path
-  - Audio file must be 24kHz, 16-bit PCM, mono WAV format
+  - Audio file must be 24kHz, 16-bit, mono WAV format
   - Audio output device must be working properly
 
 Usage:

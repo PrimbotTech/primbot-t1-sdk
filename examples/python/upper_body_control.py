@@ -107,6 +107,22 @@ class CustomUpperControlNode(Node):
             )
         return result.success
 
+    def switch_to_wbc(self) -> bool:
+        switcher = McActionSwitcher(self)
+        options = McActionSwitchOptions(
+            source="upper_body_control",
+            total_timeout=30.0,
+            should_cancel=lambda: g_stop,
+        )
+        result = switcher.switch_to("BIPED_LOCOMOTION_WBC", options)
+        if not result.success:
+            current_action = result.current_action or "(unknown)"
+            self.get_logger().error(
+                "Failed to switch from "
+                f"{current_action} to BIPED_LOCOMOTION_WBC: {result.message}"
+            )
+        return result.success
+
     def default_stand_positions(self) -> Dict[str, float]:
         return dict(zip(JOINT_NAMES, DEFAULT_STAND_POSITIONS))
 
@@ -231,6 +247,7 @@ def main() -> int:
 
             if rclpy.ok():
                 node.publish_default_for_shutdown()
+                node.switch_to_wbc()
     finally:
         node.destroy_node()
         if rclpy.ok():

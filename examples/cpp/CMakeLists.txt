@@ -7,6 +7,7 @@ find_package(aimdk_msgs REQUIRED)
 find_package(OpenCV 4.13.0 EXACT REQUIRED CONFIG COMPONENTS core imgproc imgcodecs videoio)
 find_package(ruckig_for_primebot REQUIRED)
 set(EXAMPLE_TARGETS
+  get_asr_result
   get_audio_device_list
   get_bms_state
   get_jpg

@@ -110,7 +110,24 @@ class CustomUpperControlNode : public rclcpp::Node
     return result.success;
   }
 
-  // ── Demo logic ──
+  bool switch_to_wbc()
+  {
+    aimdk_examples::McActionSwitcher switcher(this->shared_from_this());
+    aimdk_examples::McActionSwitchOptions options;
+    options.source = "upper_body_control";
+    options.total_timeout = std::chrono::seconds(30);
+
+    const auto result =
+        switcher.switch_to("BIPED_LOCOMOTION_WBC", options);
+    if (!result.success) {
+      RCLCPP_ERROR(
+          this->get_logger(),
+          "Failed to switch from %s to BIPED_LOCOMOTION_WBC: %s",
+          result.current_action.empty() ? "(unknown)" : result.current_action.c_str(),
+          result.message.c_str());
+    }
+    return result.success;
+  }
 
   bool run_demo()
   {
@@ -297,6 +314,7 @@ int main(int argc, char *argv[])
 
       if (rclcpp::ok()) {
         node->publish_default_for_shutdown();
+        node->switch_to_wbc();
       }
     }
   } catch (const std::exception &e) {

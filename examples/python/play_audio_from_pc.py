@@ -11,13 +11,23 @@
   - 非 48kHz 采样率自动重采样
 
 前提条件：
-  示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）。
+  - 示例脚本会通过 SSH 自动在机器人端加载 TCP 播放模块（端口 6001）
+  - 使用 SSH 密钥时：将售后提供的密钥目录（<机器人SN>_soc0/）放到 SDK 根目录下
+    （与 examples/ 同级），并修改权限：
+    sudo chown -R $USER:$USER ./<机器人SN>_soc0/
+    chmod 600 ./<机器人SN>_soc0/id_ed25519
+    然后在 SDK 根目录下执行示例命令，使用 -i ./<机器人SN>_soc0/id_ed25519 指定密钥。
 
 用法：
-  python3 examples/python/play_audio_from_pc.py <机器人IP> <音频文件>
+  python3 examples/python/play_audio_from_pc.py [-i SSH_KEY] <机器人IP> <音频文件>
+
+  可选参数：
+    -i SSH_KEY    SSH 私钥文件路径（机器人需要密钥登录）
 
 示例：
   python3 examples/python/play_audio_from_pc.py <机器人IP> mic_mono.wav
+  # 使用 SSH 密钥（网线连接时 IP 为 10.1.1.100）
+  python3 examples/python/play_audio_from_pc.py -i ./<机器人SN>_soc0/id_ed25519 10.1.1.100 mic_mono.wav
 """
 
 import socket
@@ -36,15 +46,18 @@ SAMPLE_WIDTH = 2   # 16-bit = 2 bytes
 PORT = 6001
 
 
-def setup_robot_audio_tcp(robot_ip):
+def setup_robot_audio_tcp(robot_ip, ssh_key=None):
     """Auto-load PulseAudio TCP playback module on robot via SSH.
 
     先检查模块是否已加载，已加载则跳过。
     SSH 输出直接显示在终端，以便用户看到密码提示并完成认证。
     """
+    ssh_opts = "-o StrictHostKeyChecking=no -o ConnectTimeout=5"
+    if ssh_key:
+        ssh_opts += " -i %s" % ssh_key
     # 一条 SSH 命令：先检查，未加载才加载，避免重复输入密码
     cmd = (
-        'ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 run@%s \''
+        'ssh %s run@%s \''
         'if pactl list modules short 2>/dev/null | grep -q module-simple-protocol-tcp; then '
         'echo MODULE_ALREADY_LOADED; '
         'else '
@@ -53,7 +66,7 @@ def setup_robot_audio_tcp(robot_ip):
         'format=s16le rate=%d channels=%d listen=0.0.0.0 && '
         'echo MODULE_LOADED; '
         'fi\''
-        % (robot_ip, PORT, RATE, CHANNELS)
+        % (ssh_opts, robot_ip, PORT, RATE, CHANNELS)
     )
     try:
         result = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE, text=True)
@@ -171,12 +184,26 @@ def load_file(path):
 
 def main():
     if len(sys.argv) < 3:
-        print("用法: %s <机器人IP> <audio_file>" % sys.argv[0])
+        print("用法: %s [-i SSH_KEY] <机器人IP> <audio_file>" % sys.argv[0])
+        print()
+        print("  可选参数：")
+        print("    -i SSH_KEY    SSH 私钥文件路径（机器人需要密钥登录）")
+        print()
         print("支持格式: .pcm (48kHz mono S16LE), .wav (自动转换)")
         sys.exit(1)
 
-    robot_ip = sys.argv[1]
-    audio_file = sys.argv[2]
+    # 解析可选参数 -i SSH_KEY
+    ssh_key = None
+    args = sys.argv[1:]
+    if args[0] == "-i":
+        if len(args) < 4:
+            print("错误: -i 参数需要指定 SSH 私钥文件路径")
+            sys.exit(1)
+        ssh_key = args[1]
+        args = args[2:]
+
+    robot_ip = args[0]
+    audio_file = args[1]
 
     stop = False
 
@@ -186,7 +213,9 @@ def main():
     signal.signal(signal.SIGINT, on_signal)
 
     # Auto-load TCP playback module on robot via SSH
-    setup_robot_audio_tcp(robot_ip)
+    if ssh_key:
+        print("使用 SSH 密钥: %s" % ssh_key)
+    setup_robot_audio_tcp(robot_ip, ssh_key)
 
     # Load raw file data (local)
     raw = load_file(audio_file)
