@@ -159,7 +159,7 @@ source ~/.bashrc
 
 **通信配置**
 
-SDK 默认 FastDDS 配置会自动加载 20M UDP socket buffer。为避免高频 Topic 出现丢帧、消息时通时不通或 pub/sub 帧率不足，Ubuntu/Linux 开发 PC 建议提前持久化配置对应的内核 UDP 缓冲区上限。临时与持久化修改方法、内核参数与 FastDDS profile 的对应关系，以及可选 SHM 配置说明，请参考 [5.7 通信配置](#57-通信配置)。
+SDK 默认 FastDDS 配置会自动加载 20M UDP socket buffer。为避免高频 Topic 出现丢帧、消息时通时不通或 pub/sub 帧率不足，Ubuntu/Linux 开发 PC 建议提前持久化配置对应的内核 UDP 缓冲区上限。临时与持久化修改方法、内核参数与 FastDDS profile 的对应关系，以及可选 SHM 配置说明，请参考 [6.7 通信配置](#67-通信配置)。
 
 **构建工具 (colcon)**
 
@@ -173,7 +173,7 @@ sudo apt update && sudo apt install python3-colcon-common-extensions
 pip3 show colcon-core
 ```
 - **预期结果**：能够显示出版本号信息（如 `0.20.x`）即表示 `colcon` 已成功安装且已被配置到系统环境变量中。
-- **异常排查**：若安装失败或无法识别命令，请参考 [5.5 colcon 安装异常排查](#55-colcon-安装异常排查)。
+- **异常排查**：若安装失败或无法识别命令，请参考 [6.5 colcon 安装异常排查](#65-colcon-安装异常排查)。
 
 ---
 
@@ -379,12 +379,12 @@ colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
 **3. 加载编译产物**
 
 > *(每次打开新终端运行 SDK 相关节点前都需执行此步。**注意：请务必将下方命令的路径替换为您实际解压 SDK 的绝对路径！**)*
-> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+> 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
 ```bash
 source /path/to/your/primebot_sdk/install/setup.bash
 ```
 
-> **FastDDS 配置自动加载**：SDK 已在 `aimdk_msgs` 包内安装 `ament_environment_hooks`。执行上述 `source` 后，若当前终端没有手动设置 DDS 配置，会自动使用 `rmw_fastrtps_cpp`，并加载 `<sdk-install>/share/aimdk_msgs/config/fastdds_profiles.xml`。FastDDS 配置会随 SDK setup 自动加载，但内核参数不会由 SDK 自动修改；通信配置关系、临时与持久化修改方法参见 [5.7 通信配置](#57-通信配置)。
+> **FastDDS 配置自动加载**：SDK 已在 `aimdk_msgs` 包内安装 `ament_environment_hooks`。执行上述 `source` 后，若当前终端没有手动设置 DDS 配置，会自动使用 `rmw_fastrtps_cpp`，并加载 `<sdk-install>/share/aimdk_msgs/config/fastdds_profiles.xml`。FastDDS 配置会随 SDK setup 自动加载，但内核参数不会由 SDK 自动修改；通信配置关系、临时与持久化修改方法参见 [6.7 通信配置](#67-通信配置)。
 
 **4. 验证数据接收**
 
@@ -394,7 +394,7 @@ source /path/to/your/primebot_sdk/install/setup.bash
 timeout 5 ros2 topic echo /aima/hal/bms/state --once
 ```
 - **正常**：输出对应的数据报文（如电压、电流、电量百分比等）。
-- **异常**：5 秒无输出（超时退出）或报错 → 参考 [5.2 数据收发异常排查](#52-数据收发异常排查)
+- **异常**：5 秒无输出（超时退出）或报错 → 参考 [6.2 数据收发异常排查](#62-数据收发异常排查)
 
 ---
 
@@ -406,7 +406,7 @@ timeout 5 ros2 topic echo /aima/hal/bms/state --once
 我们可以通过“终端 A 模拟发布”和“终端 B 订阅数据”的方式，验证触摸事件接口是否正常工作。
 
 *终端 A（模拟发布数据）：*
-> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+> 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
 ```bash
 # 1. 加载环境变量
 source /opt/ros/humble/setup.bash
@@ -417,7 +417,7 @@ ros2 topic pub /aima/hal/touch/state aimdk_msgs/msg/TouchState \
 ```
 
 *终端 B（订阅数据）：*
-> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+> 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
 ```bash
 # 1. 开一个新终端，需先重新加载环境变量
 source /opt/ros/humble/setup.bash
@@ -437,14 +437,14 @@ ros2 topic echo /aima/hal/touch/state
   event_type: 1
   ---
   ```
-- **异常**：如果终端 B 持续卡住无任何输出，或提示 `Cannot determine type for...` 错误，请参考 [5.2 数据收发异常排查](#52-数据收发异常排查)。
+- **异常**：如果终端 B 持续卡住无任何输出，或提示 `Cannot determine type for...` 错误，请参考 [6.2 数据收发异常排查](#62-数据收发异常排查)。
 
 **Service 验证（调用 TTS 语音播报）**
 
 我们可以直接在终端调用机器人的 TTS（Text-to-Speech）语音播报服务，验证服务响应是否成功以及机器人能否正常发声。
 
 *终端（调用 TTS 服务）：*
-> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+> 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
 ```bash
 # 1. 开一个新终端，需先重新加载环境变量
 source /opt/ros/humble/setup.bash
@@ -460,13 +460,13 @@ ros2 service call /aimdk_5Fmsgs/srv/PlayTts aimdk_msgs/srv/PlayTts \
   response:
     aimdk_msgs.srv.PlayTts_Response(header=..., tts_resp=...)
   ```
-- **异常**：如果命令卡在 `waiting for service to become available...` 阶段，或者直接提示 `Service not available`，请参考 [5.2 数据收发异常排查](#52-数据收发异常排查)。
+- **异常**：如果命令卡在 `waiting for service to become available...` 阶段，或者直接提示 `Service not available`，请参考 [6.2 数据收发异常排查](#62-数据收发异常排查)。
 
 ---
 
 ### 2.3 运行示例
 每次打开新终端，运行示例前需先加载环境：
-> 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+> 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
 ```bash
 source /opt/ros/humble/setup.bash
 source /path/to/your/primebot_sdk/install/setup.bash
@@ -486,7 +486,7 @@ ros2 run aimdk_examples_cpp demo
 ## 3. SDK 开发集成指南（Python & C++）
 本章节将指导您基于 SDK 进行二次开发，包括两种典型场景：**直接在 SDK 内部新建模块**（推荐新手或小型工程），或**将 SDK 接入您已有的独立项目**（推荐复杂或已有项目）。根据您使用的编程语言不同，分为 **Python** 和 **C++** 两种开发流程。
 > **前提条件**：在开始本章节之前，请确保已完成以下步骤：
-> 1. 完成环境设置 [2.1.2 系统环境](#212-系统环境) 
+> 1. 完成环境设置 [2.1.3 系统环境](#213-系统环境) 
 > 2. 完成SDK编译 [2.2.1 编译操作](#221-编译操作) 
 > **💡 建议**：在正式开发前，先通过 [2.3 运行示例](#23-运行示例) 验证通讯与示例正常运行，可帮助您在开发阶段更快定位问题根因。
 
@@ -541,7 +541,7 @@ my_ai_backend/
     ```
 3. **环境注入与启动**：
     创建启动包装脚本 `run.sh`，**并将以下内容保存到该脚本中**：
-    > 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+    > 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
     ```bash
     #!/bin/bash
     # 挂载底座与依赖总库
@@ -599,7 +599,7 @@ C++ 集成涉及 CMake 找包与链接的过程。本 SDK 基于 ROS 2 的 `amen
     colcon build --cmake-args -DCMAKE_BUILD_TYPE=Release
     ```
 4. **加载与运行**：加载环境并运行节点：
-    > 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+    > 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
     ```bash
     source /opt/ros/humble/setup.bash
     source /path/to/your/primebot_sdk/install/setup.bash
@@ -712,7 +712,7 @@ my_project/
 
 5. **加载并运行**：
 
-    > 若未按 [5.7 通信配置](#57-通信配置) 持久化配置内核参数，请先参考 5.7 临时调整内核参数。
+    > 若未按 [6.7 通信配置](#67-通信配置) 持久化配置内核参数，请先参考 6.7 临时调整内核参数。
     ```bash
     source /opt/ros/humble/setup.bash
     source install/setup.bash
@@ -875,7 +875,7 @@ yamo em start-app my_module     # 启动
 
 ## 5. 开发者模式说明
 
-机器人系统采用了多维度、分层级的权限管理架构，以平衡系统的安全性与二次开发的灵活性。通过在机器人终端执行 `yamo mode edit` 指令，开发者可以根据实际需求对系统的开放程度进行精细化编排及选择。
+机器人系统采用了多维度、分层级的权限管理架构，以平衡系统的安全性与二次开发的灵活性。通过手机 APP 中的「开发者模式」设置，开发者可以根据实际需求对系统的开放程度进行精细化编排及选择。
 
 模式架构分为以下五个层级：
 
@@ -925,7 +925,7 @@ yamo em start-app my_module     # 启动
    ```bash
    sudo ufw disable
    ```
-2. **通信配置不足或不匹配**：SDK 默认 FastDDS 配置已将 UDP socket buffer 设置为 20M，对应的开发 PC 内核 UDP 缓冲区上限也应设置为 20M+，并保证内核参数值大于等于 `aimdk_msgs/config/fastdds_profiles.xml` 中的 `sendBufferSize` / `receiveBufferSize`。如果 20M 仍不满足业务需求，可自行修改 FastDDS 配置并同步调大内核参数。临时与持久化修改方法详见 [5.7 通信配置](#57-通信配置)。
+2. **通信配置不足或不匹配**：SDK 默认 FastDDS 配置已将 UDP socket buffer 设置为 20M，对应的开发 PC 内核 UDP 缓冲区上限也应设置为 20M+，并保证内核参数值大于等于 `aimdk_msgs/config/fastdds_profiles.xml` 中的 `sendBufferSize` / `receiveBufferSize`。如果 20M 仍不满足业务需求，可自行修改 FastDDS 配置并同步调大内核参数。临时与持久化修改方法详见 [6.7 通信配置](#67-通信配置)。
 3. **环境变量未加载（报错 Cannot determine type）**：在对特定自定义消息进行操作时，如果当前终端没有先执行 `source /path/to/your/primebot_sdk/install/setup.bash`（需替换为您实际路径），电脑环境里就不存在该消息协议，无法做二进制的反序列化导致报错。
 4. **消息按事件触发（无源数据）**：部分 Topic（如触摸事件），只有在发生物理接触时才会发送数据产生流量。如果您此时监听该 Topic，可能只需实际触发一次（如摸一下机器人头部）即可触发数据产生。
 

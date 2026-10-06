@@ -12,11 +12,11 @@ Description:
   positions, stiffness, and damping.
 
 Prerequisites:
-  - Robot must be in low-level motion control developer mode (run `yamo mode edit` ->
-    Advanced -> domains.mc.low_level_dev, then reboot)
   - Robot must be placed flat on the ground or suspended
-  - Joint state topic /aima/hal/joint/state must be publishing
-  - Ruckig trajectory library must be available
+  - Robot motion control module must be disabled
+  - SDK must be built: colcon build
+  - Environment must be sourced: source install/setup.bash
+  - Ruckig library must be available (ruckig_for_primebot)
 
 Usage:
   # List available joints (no parameters needed):
